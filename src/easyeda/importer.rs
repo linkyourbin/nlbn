@@ -77,9 +77,26 @@ impl SymbolImporter {
                     }
                 }
                 "A" => {
-                    // Arc: A~x~y~radius~startAngle~endAngle~id~locked~layerid~type
-                    if let Ok(arc) = Self::parse_arc(&fields) {
-                        symbol.arcs.push(arc);
+                    // Arc can be in two formats:
+                    // 1. Traditional: A~x~y~radius~startAngle~endAngle~id~locked~layerid~type
+                    // 2. SVG path: A~M x y A rx ry angle large sweep x y~~color~width~...
+                    log::debug!("Parsing arc with {} fields", fields.len());
+
+                    // Check if second field starts with "M" (SVG path format)
+                    if fields.len() > 1 && fields[1].trim().starts_with("M") {
+                        log::debug!("Detected SVG path arc: {}", fields[1]);
+                        if let Ok(path_arcs) = Self::parse_svg_arc(&fields) {
+                            symbol.arcs.extend(path_arcs);
+                        } else {
+                            log::warn!("Failed to parse SVG arc from: {}", shape);
+                        }
+                    } else {
+                        // Traditional format
+                        if let Ok(arc) = Self::parse_arc(&fields) {
+                            symbol.arcs.push(arc);
+                        } else {
+                            log::warn!("Failed to parse traditional arc from: {}", shape);
+                        }
                     }
                 }
                 "PL" => {
@@ -336,6 +353,71 @@ impl SymbolImporter {
             end_angle,
             stroke_width: 1.0,
         })
+    }
+
+    fn parse_svg_arc(fields: &[&str]) -> Result<Vec<EeArc>> {
+        use crate::easyeda::svg_parser::{parse_svg_path, SvgCommand};
+
+        if fields.len() < 2 {
+            return Err(EasyedaError::InvalidData("Invalid SVG arc data".to_string()).into());
+        }
+
+        let svg_path = fields[1];
+        let commands = parse_svg_path(svg_path)?;
+
+        let mut arcs = Vec::new();
+        let mut current_pos = (0.0, 0.0);
+
+        for cmd in commands {
+            match cmd {
+                SvgCommand::MoveTo { x, y } => {
+                    current_pos = (x, y);
+                }
+                SvgCommand::Arc { rx, ry, angle: _, large_arc: _, sweep, x, y } => {
+                    // Convert SVG arc to center-based arc
+                    // For simplicity, approximate with center at midpoint
+                    let cx = (current_pos.0 + x) / 2.0;
+                    let cy = (current_pos.1 + y) / 2.0;
+                    let radius = ((rx + ry) / 2.0).abs();
+
+                    // Calculate angles from start and end points
+                    let start_angle = ((current_pos.1 - cy).atan2(current_pos.0 - cx)).to_degrees();
+                    let end_angle = ((y - cy).atan2(x - cx)).to_degrees();
+
+                    // Adjust angles based on sweep direction
+                    let (start_angle, end_angle) = if sweep {
+                        if end_angle < start_angle {
+                            (start_angle, end_angle + 360.0)
+                        } else {
+                            (start_angle, end_angle)
+                        }
+                    } else {
+                        if start_angle < end_angle {
+                            (start_angle + 360.0, end_angle)
+                        } else {
+                            (start_angle, end_angle)
+                        }
+                    };
+
+                    arcs.push(EeArc {
+                        x: cx,
+                        y: cy,
+                        radius,
+                        start_angle,
+                        end_angle,
+                        stroke_width: 1.0,
+                    });
+
+                    current_pos = (x, y);
+                }
+                SvgCommand::LineTo { x, y } => {
+                    current_pos = (x, y);
+                }
+                SvgCommand::ClosePath => {}
+            }
+        }
+
+        Ok(arcs)
     }
 
     fn parse_polyline(fields: &[&str]) -> Result<EePolyline> {

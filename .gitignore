@@ -6,6 +6,7 @@ Cargo.lock
 /test_output/
 *.log
 /output/
+/tmp/
 
 # IDE
 .vscode/

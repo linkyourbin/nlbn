@@ -1,8 +1,17 @@
-# nlbn
+<div align="center">
+  <img src="nlbn.svg" alt="nlbn logo" width="200"/>
 
-**Fast EasyEDA/LCSC to KiCad converter written in Rust**
+  # nlbn
 
-Convert EasyEDA and LCSC components to KiCad library formats with blazing fast parallel downloads.
+  **Fast EasyEDA/LCSC to KiCad converter written in Rust**
+
+  Convert EasyEDA and LCSC components to KiCad library formats with blazing fast parallel downloads.
+
+  [![Crates.io](https://img.shields.io/crates/v/nlbn.svg)](https://crates.io/crates/nlbn)
+  [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+  [![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org/)
+
+</div>
 
 ## Features
 

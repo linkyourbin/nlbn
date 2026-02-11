@@ -744,12 +744,16 @@ fn process_component(args: &Cli, api: &EasyedaApi, lib_manager: &LibraryManager,
         // Add 3D model reference if available
         if let Some(model_info) = &component_data.model_3d {
             if args.model_3d || args.full {
+                // Use LCSC ID as unique identifier to prevent name collisions
+                let model_name = format!("{}_{}", sanitize_name(&model_info.title), lcsc_id);
+
                 // Default to project-relative paths (KIPRJMOD) for easier setup
                 // Use --project-relative flag to force global paths if needed
+                // Prefer STEP format as it's more widely supported
                 let model_path = if args.project_relative {
-                    format!("${{E2K/e2k.3dshapes/{}.wrl", sanitize_name(&model_info.title))
+                    format!("${{KIPRJMOD}}/nlbn.3dshapes/{}.step", model_name)
                 } else {
-                    format!("${{E2K}}/e2k.3dshapes/{}.wrl", sanitize_name(&model_info.title))
+                    format!("${{NLBN}}/nlbn.3dshapes/{}.step", model_name)
                 };
 
                 ki_footprint.model_3d = Some(kicad::Ki3dModel {

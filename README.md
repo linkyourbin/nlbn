@@ -19,11 +19,10 @@
 
 ## Features
 
-- ✅ Convert symbols, footprints, and 3D models (STEP format)
-- ✅ Batch processing with parallel downloads (up to 45x faster)
-- ✅ Support for KiCad v5.x and v6.x/v7.x formats
+- ✅ Convert symbols, footprints, and 3D models 
+- ✅ Batch processing with parallel downloads 
 - ✅ Standalone binary - no dependencies required
-- ✅ Low memory usage (~20MB)
+- ✅ Low memory usage 
 
 ## Installation
 

@@ -503,6 +503,12 @@ impl SymbolImporter {
             }
         }
 
+        // If path has ClosePath command (Z), close the polygon by adding the first point again
+        if has_close_path && !points.is_empty() {
+            let first_point = points[0];
+            points.push(first_point);
+        }
+
         let stroke_width = if fields.len() > 3 {
             fields[3].parse::<f64>().unwrap_or(1.0)
         } else {

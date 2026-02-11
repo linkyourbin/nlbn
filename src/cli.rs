@@ -4,7 +4,7 @@ use crate::error::{AppError, Result};
 
 #[derive(Parser, Debug)]
 #[command(name = "nlbn")]
-#[command(version = "0.3.0")]
+#[command(version = "1.0.0")]
 #[command(about = "Fast EasyEDA/LCSC to KiCad converter with parallel downloads", long_about = None)]
 pub struct Cli {
     /// LCSC component ID (e.g., C2040)

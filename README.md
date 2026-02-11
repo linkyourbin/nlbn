@@ -1,17 +1,21 @@
 <div align="center">
-  <img src="nlbn.svg" alt="nlbn logo" width="200"/>
+  <img src="nlbn.svg" alt="nlbn logo" width="300"/>
 
-  # nlbn
+  <h1>nlbn</h1>
 
-  **Fast EasyEDA/LCSC to KiCad converter written in Rust**
+  <p><strong>Fast EasyEDA/LCSC to KiCad converter written in Rust</strong></p>
 
-  Convert EasyEDA and LCSC components to KiCad library formats with blazing fast parallel downloads.
+  <p>Convert EasyEDA and LCSC components to KiCad library formats with blazing fast parallel downloads.</p>
 
-  [![Crates.io](https://img.shields.io/crates/v/nlbn.svg)](https://crates.io/crates/nlbn)
-  [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-  [![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org/)
+  <p>
+    <a href="https://crates.io/crates/nlbn"><img src="https://img.shields.io/crates/v/nlbn.svg" alt="Crates.io"></a>
+    <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
+    <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/rust-1.70%2B-orange.svg" alt="Rust"></a>
+  </p>
 
 </div>
+
+---
 
 ## Features
 

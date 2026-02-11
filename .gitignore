@@ -20,3 +20,6 @@ Thumbs.db
 
 # Claude
 .claude/
+
+# lscs_id
+lscs_id.txt

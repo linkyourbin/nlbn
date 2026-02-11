@@ -111,6 +111,15 @@ impl SymbolImporter {
                         symbol.polygons.push(polygon);
                     }
                 }
+                "PT" => {
+                    // Path (SVG path): PT~M x y L x y Z~color~width~...~fill
+                    log::debug!("Parsing PT path with {} fields", fields.len());
+                    if let Ok(polygon) = Self::parse_pt_path(&fields) {
+                        symbol.polygons.push(polygon);
+                    } else {
+                        log::warn!("Failed to parse PT path from: {}", shape);
+                    }
+                }
                 "T" => {
                     // Text: T~x~y~rotation~text~id~locked~layerid~type~fontSize
                     if let Ok(text) = Self::parse_text(&fields) {
@@ -455,6 +464,54 @@ impl SymbolImporter {
         };
 
         let fill = fields.len() > 7 && fields[7] == "1";
+
+        Ok(EePolygon {
+            points,
+            stroke_width,
+            fill,
+        })
+    }
+
+    fn parse_pt_path(fields: &[&str]) -> Result<EePolygon> {
+        use crate::easyeda::svg_parser::{parse_svg_path, SvgCommand};
+
+        if fields.len() < 2 {
+            return Err(EasyedaError::InvalidData("Invalid path data".to_string()).into());
+        }
+
+        let svg_path = fields[1];
+        let commands = parse_svg_path(svg_path)?;
+
+        let mut points = Vec::new();
+        let mut has_close_path = false;
+
+        for cmd in commands {
+            match cmd {
+                SvgCommand::MoveTo { x, y } => {
+                    points.push((x, y));
+                }
+                SvgCommand::LineTo { x, y } => {
+                    points.push((x, y));
+                }
+                SvgCommand::Arc { x, y, .. } => {
+                    // For paths, just add the end point
+                    points.push((x, y));
+                }
+                SvgCommand::ClosePath => {
+                    has_close_path = true;
+                }
+            }
+        }
+
+        let stroke_width = if fields.len() > 3 {
+            fields[3].parse::<f64>().unwrap_or(1.0)
+        } else {
+            1.0
+        };
+
+        // If path has ClosePath command (Z), it should be filled
+        // This is typical for shapes like triangles in diode symbols
+        let fill = has_close_path;
 
         Ok(EePolygon {
             points,

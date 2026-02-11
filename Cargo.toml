@@ -31,6 +31,7 @@ anyhow = "1.0.101"
 log = "0.4.29"
 env_logger = "0.11.8"
 rayon = "1.10"
+chrono = "0.4"
 
 [dev-dependencies]
 mockito = "1.7.2"

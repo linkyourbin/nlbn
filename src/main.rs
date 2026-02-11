@@ -5,9 +5,19 @@ use std::sync::{Arc, Mutex};
 use rayon::prelude::*;
 
 fn main() {
-    // Initialize logger
+    // Initialize logger with custom format to hide module paths
     env_logger::Builder::from_default_env()
         .filter_level(log::LevelFilter::Info)
+        .format(|buf, record| {
+            use std::io::Write;
+            writeln!(
+                buf,
+                "[{} {} nlbn] {}",
+                chrono::Local::now().format("%Y-%m-%dT%H:%M:%S%.3fZ"),
+                record.level(),
+                record.args()
+            )
+        })
         .init();
 
     // Parse CLI arguments

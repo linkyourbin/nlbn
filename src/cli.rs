@@ -4,7 +4,7 @@ use crate::error::{AppError, Result};
 
 #[derive(Parser, Debug)]
 #[command(name = "nlbn")]
-#[command(version = "1.0.3")]
+#[command(version = "1.0.4")]
 #[command(about = "Fast EasyEDA/LCSC to KiCad converter with parallel downloads", long_about = None)]
 pub struct Cli {
     /// LCSC component ID (e.g., C2040)
@@ -94,33 +94,17 @@ impl Cli {
             // Single ID mode
             Ok(vec![id.clone()])
         } else if let Some(ref batch_file) = self.batch {
-            // Batch mode: read from file
+            // Batch mode: extract all LCSC IDs (C + digits) from file
             use std::fs;
-            use std::io::{BufRead, BufReader};
+            use regex::Regex;
 
-            let file = fs::File::open(batch_file)
+            let content = fs::read_to_string(batch_file)
                 .map_err(|e| AppError::Other(format!("Failed to open batch file: {}", e)))?;
 
-            let reader = BufReader::new(file);
-            let mut ids = Vec::new();
-
-            for (line_num, line) in reader.lines().enumerate() {
-                let line = line.map_err(|e| AppError::Other(format!("Failed to read line {}: {}", line_num + 1, e)))?;
-                let trimmed = line.trim();
-
-                // Skip empty lines and comments
-                if trimmed.is_empty() || trimmed.starts_with('#') {
-                    continue;
-                }
-
-                // Validate LCSC ID format
-                if !trimmed.starts_with('C') || trimmed.len() < 2 {
-                    log::warn!("Line {}: Invalid LCSC ID format '{}', skipping", line_num + 1, trimmed);
-                    continue;
-                }
-
-                ids.push(trimmed.to_string());
-            }
+            let re = Regex::new(r"C\d+").unwrap();
+            let ids: Vec<String> = re.find_iter(&content)
+                .map(|m| m.as_str().to_string())
+                .collect();
 
             if ids.is_empty() {
                 return Err(AppError::Other("No valid LCSC IDs found in batch file".to_string()));

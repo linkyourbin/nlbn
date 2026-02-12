@@ -131,27 +131,50 @@ impl LibraryManager {
         let content = fs::read_to_string(lib_path)
             .map_err(KicadError::Io)?;
 
-        let v6_pattern = format!(
-            r#"\(symbol\s+"{}"\s+.*?\n\)\n"#,
-            regex::escape(component_name)
-        );
-        if let Ok(re) = Regex::new(&v6_pattern) {
-            if re.is_match(&content) {
-                let new_content = re.replace(&content, new_data);
-                fs::write(lib_path, new_content.as_ref())
+        // Try v6 format: find symbol block by matching parentheses
+        let search = format!(r#"(symbol "{}""#, component_name);
+        if let Some(start) = content.find(&search) {
+            // Walk back to find the opening '(' before "symbol"
+            let block_start = content[..start].rfind('(').unwrap_or(start);
+            // Count parentheses to find the matching close
+            let mut depth = 0;
+            let mut block_end = block_start;
+            for (i, ch) in content[block_start..].char_indices() {
+                match ch {
+                    '(' => depth += 1,
+                    ')' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            block_end = block_start + i + 1;
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            if block_end > block_start {
+                let mut new_content = String::with_capacity(content.len());
+                new_content.push_str(&content[..block_start]);
+                new_content.push_str(new_data);
+                new_content.push_str(&content[block_end..]);
+                fs::write(lib_path, &new_content)
                     .map_err(KicadError::Io)?;
                 return Ok(());
             }
         }
 
-        let v5_pattern = format!(
-            r"DEF\s+{}\s+.*?ENDDEF\n",
-            regex::escape(component_name)
-        );
-        if let Ok(re) = Regex::new(&v5_pattern) {
-            if re.is_match(&content) {
-                let new_content = re.replace(&content, new_data);
-                fs::write(lib_path, new_content.as_ref())
+        // Try v5 format
+        let v5_start = format!("DEF {} ", component_name);
+        if let Some(start) = content.find(&v5_start) {
+            if let Some(end_offset) = content[start..].find("ENDDEF") {
+                let block_end = start + end_offset + "ENDDEF".len();
+                // Skip trailing newline
+                let block_end = if content[block_end..].starts_with('\n') { block_end + 1 } else { block_end };
+                let mut new_content = String::with_capacity(content.len());
+                new_content.push_str(&content[..start]);
+                new_content.push_str(new_data);
+                new_content.push_str(&content[block_end..]);
+                fs::write(lib_path, &new_content)
                     .map_err(KicadError::Io)?;
                 return Ok(());
             }
@@ -207,29 +230,47 @@ impl LibraryManager {
         let content = fs::read_to_string(lib_path)
             .map_err(KicadError::Io)?;
 
-        // Try v6 format first
-        let v6_pattern = format!(
-            r#"\(symbol\s+"{}"\s+.*?\n\)\n"#,
-            regex::escape(component_name)
-        );
-        if let Ok(re) = Regex::new(&v6_pattern) {
-            if re.is_match(&content) {
-                let new_content = re.replace(&content, new_data);
-                fs::write(lib_path, new_content.as_ref())
+        // Try v6 format: find symbol block by matching parentheses
+        let search = format!(r#"(symbol "{}""#, component_name);
+        if let Some(start) = content.find(&search) {
+            let block_start = content[..start].rfind('(').unwrap_or(start);
+            let mut depth = 0;
+            let mut block_end = block_start;
+            for (i, ch) in content[block_start..].char_indices() {
+                match ch {
+                    '(' => depth += 1,
+                    ')' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            block_end = block_start + i + 1;
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            if block_end > block_start {
+                let mut new_content = String::with_capacity(content.len());
+                new_content.push_str(&content[..block_start]);
+                new_content.push_str(new_data);
+                new_content.push_str(&content[block_end..]);
+                fs::write(lib_path, &new_content)
                     .map_err(KicadError::Io)?;
                 return Ok(());
             }
         }
 
         // Try v5 format
-        let v5_pattern = format!(
-            r"DEF\s+{}\s+.*?ENDDEF\n",
-            regex::escape(component_name)
-        );
-        if let Ok(re) = Regex::new(&v5_pattern) {
-            if re.is_match(&content) {
-                let new_content = re.replace(&content, new_data);
-                fs::write(lib_path, new_content.as_ref())
+        let v5_start = format!("DEF {} ", component_name);
+        if let Some(start) = content.find(&v5_start) {
+            if let Some(end_offset) = content[start..].find("ENDDEF") {
+                let block_end = start + end_offset + "ENDDEF".len();
+                let block_end = if content[block_end..].starts_with('\n') { block_end + 1 } else { block_end };
+                let mut new_content = String::with_capacity(content.len());
+                new_content.push_str(&content[..start]);
+                new_content.push_str(new_data);
+                new_content.push_str(&content[block_end..]);
+                fs::write(lib_path, &new_content)
                     .map_err(KicadError::Io)?;
                 return Ok(());
             }

@@ -1,10 +1,13 @@
 use clap::Parser;
 use nlbn::*;
 use std::process;
-use std::sync::{Arc, Mutex};
-use rayon::prelude::*;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use tokio::sync::Semaphore;
+use tokio::task::JoinSet;
 
-fn main() {
+#[tokio::main]
+async fn main() {
     // Initialize logger with custom format to hide module paths
     env_logger::Builder::from_default_env()
         .filter_level(log::LevelFilter::Info)
@@ -29,13 +32,13 @@ fn main() {
     }
 
     // Run the conversion
-    if let Err(e) = run(args) {
+    if let Err(e) = run(args).await {
         eprintln!("Error: {}", e);
         process::exit(1);
     }
 }
 
-fn run(args: Cli) -> error::Result<()> {
+async fn run(args: Cli) -> error::Result<()> {
     // Validate arguments
     args.validate()?;
 
@@ -52,45 +55,57 @@ fn run(args: Cli) -> error::Result<()> {
     }
 
     // Setup output directories
-    let lib_manager = LibraryManager::new(&args.output);
+    let lib_manager = Arc::new(LibraryManager::new(&args.output));
     lib_manager.create_directories()?;
 
     // Initialize API
-    let api = EasyedaApi::new();
+    let api = Arc::new(EasyedaApi::new());
 
     // Track statistics
-    let success_count = Arc::new(Mutex::new(0));
-    let failed_count = Arc::new(Mutex::new(0));
-    let failed_ids = Arc::new(Mutex::new(Vec::new()));
+    let success_count = Arc::new(AtomicUsize::new(0));
+    let failed_count = Arc::new(AtomicUsize::new(0));
+    let failed_ids = Arc::new(tokio::sync::Mutex::new(Vec::new()));
+    let args = Arc::new(args);
 
     if is_batch && args.parallel > 1 {
-        // Parallel processing mode
-        rayon::ThreadPoolBuilder::new()
-            .num_threads(args.parallel)
-            .build()
-            .unwrap()
-            .install(|| {
-                lcsc_ids.par_iter().enumerate().for_each(|(index, lcsc_id)| {
-                    println!("\n[{}/{}] Processing: {}", index + 1, total_count, lcsc_id);
+        // Async parallel processing with semaphore
+        let semaphore = Arc::new(Semaphore::new(args.parallel));
+        let mut join_set = JoinSet::new();
 
-                    // Process single component
-                    match process_component(&args, &api, &lib_manager, lcsc_id) {
-                        Ok(_) => {
-                            *success_count.lock().unwrap() += 1;
-                            println!("✓ [{}/{}] Success: {}", index + 1, total_count, lcsc_id);
-                        }
-                        Err(e) => {
-                            *failed_count.lock().unwrap() += 1;
-                            failed_ids.lock().unwrap().push(lcsc_id.clone());
+        for (index, lcsc_id) in lcsc_ids.into_iter().enumerate() {
+            let sem = semaphore.clone();
+            let api = api.clone();
+            let lib_manager = lib_manager.clone();
+            let args = args.clone();
+            let success_count = success_count.clone();
+            let failed_count = failed_count.clone();
+            let failed_ids = failed_ids.clone();
 
-                            if args.continue_on_error {
-                                eprintln!("✗ [{}/{}] Failed: {} - {}", index + 1, total_count, lcsc_id, e);
-                                log::error!("Failed to process {}: {}", lcsc_id, e);
-                            }
-                        }
+            join_set.spawn(async move {
+                let _permit = sem.acquire().await.expect("semaphore closed");
+
+                println!("\n[{}/{}] Processing: {}", index + 1, total_count, lcsc_id);
+
+                match process_component(&args, &api, &lib_manager, &lcsc_id).await {
+                    Ok(_) => {
+                        success_count.fetch_add(1, Ordering::Relaxed);
+                        println!("✓ [{}/{}] Success: {}", index + 1, total_count, lcsc_id);
                     }
-                });
+                    Err(e) => {
+                        failed_count.fetch_add(1, Ordering::Relaxed);
+                        failed_ids.lock().await.push(lcsc_id.clone());
+                        eprintln!("✗ [{}/{}] Failed: {} - {}", index + 1, total_count, lcsc_id, e);
+                        log::error!("Failed to process {}: {}", lcsc_id, e);
+                    }
+                }
             });
+        }
+
+        while let Some(result) = join_set.join_next().await {
+            if let Err(e) = result {
+                log::error!("Task panicked: {}", e);
+            }
+        }
     } else {
         // Sequential processing mode
         for (index, lcsc_id) in lcsc_ids.iter().enumerate() {
@@ -100,17 +115,16 @@ fn run(args: Cli) -> error::Result<()> {
                 log::info!("Starting conversion for LCSC ID: {}", lcsc_id);
             }
 
-            // Process single component
-            match process_component(&args, &api, &lib_manager, lcsc_id) {
+            match process_component(&args, &api, &lib_manager, lcsc_id).await {
                 Ok(_) => {
-                    *success_count.lock().unwrap() += 1;
+                    success_count.fetch_add(1, Ordering::Relaxed);
                     if is_batch {
                         println!("✓ Success: {}", lcsc_id);
                     }
                 }
                 Err(e) => {
-                    *failed_count.lock().unwrap() += 1;
-                    failed_ids.lock().unwrap().push(lcsc_id.clone());
+                    failed_count.fetch_add(1, Ordering::Relaxed);
+                    failed_ids.lock().await.push(lcsc_id.clone());
 
                     if args.continue_on_error {
                         eprintln!("✗ Failed: {} - {}", lcsc_id, e);
@@ -123,9 +137,9 @@ fn run(args: Cli) -> error::Result<()> {
         }
     }
 
-    let success = *success_count.lock().unwrap();
-    let failed = *failed_count.lock().unwrap();
-    let failed_list = failed_ids.lock().unwrap().clone();
+    let success = success_count.load(Ordering::Relaxed);
+    let failed = failed_count.load(Ordering::Relaxed);
+    let failed_list = failed_ids.lock().await.clone();
 
     // Print summary for batch mode
     if is_batch {
@@ -150,9 +164,9 @@ fn run(args: Cli) -> error::Result<()> {
     Ok(())
 }
 
-fn process_component(args: &Cli, api: &EasyedaApi, lib_manager: &LibraryManager, lcsc_id: &str) -> error::Result<()> {
+async fn process_component(args: &Cli, api: &EasyedaApi, lib_manager: &LibraryManager, lcsc_id: &str) -> error::Result<()> {
     // Fetch component data from EasyEDA API
-    let component_data = api.get_component_data(lcsc_id)?;
+    let component_data = api.get_component_data(lcsc_id).await?;
 
     log::info!("Fetched component: {}", component_data.title);
 
@@ -792,17 +806,18 @@ fn process_component(args: &Cli, api: &EasyedaApi, lib_manager: &LibraryManager,
             let model_name = format!("{}_{}", sanitize_name(&model_info.title), lcsc_id);
             let exporter = ModelExporter::new();
 
-            let mut has_model = false;
+            let mut has_wrl = false;
+            let mut has_step = false;
 
             // Download and convert OBJ to WRL
-            match api.download_3d_obj(&model_info.uuid) {
+            match api.download_3d_obj(&model_info.uuid).await {
                 Ok(obj_data) => {
                     match exporter.obj_to_wrl(&obj_data) {
                         Ok(wrl_data) => {
                             match lib_manager.write_wrl_model(&model_name, &wrl_data) {
                                 Ok(_) => {
                                     log::info!("✓ WRL model converted: {}", model_name);
-                                    has_model = true;
+                                    has_wrl = true;
                                 }
                                 Err(e) => log::warn!("Failed to write WRL model: {}", e),
                             }
@@ -814,14 +829,14 @@ fn process_component(args: &Cli, api: &EasyedaApi, lib_manager: &LibraryManager,
             }
 
             // Download STEP format
-            match api.download_3d_step(&model_info.uuid) {
+            match api.download_3d_step(&model_info.uuid).await {
                 Ok(step_data) => {
                     match exporter.export_step(&step_data) {
                         Ok(step_data) => {
                             match lib_manager.write_step_model(&model_name, &step_data) {
                                 Ok(_) => {
                                     log::info!("✓ STEP model converted: {}", model_name);
-                                    has_model = true;
+                                    has_step = true;
                                 }
                                 Err(e) => log::warn!("Failed to write STEP model: {}", e),
                             }
@@ -832,10 +847,11 @@ fn process_component(args: &Cli, api: &EasyedaApi, lib_manager: &LibraryManager,
                 Err(e) => log::warn!("Failed to download STEP model: {}", e),
             }
 
-            if has_model {
-                println!("✓ 3D model converted: {} (WRL + STEP)", model_name);
-            } else {
-                println!("⚠ 3D model not available");
+            match (has_wrl, has_step) {
+                (true, true) => println!("✓ 3D model converted: {} (WRL + STEP)", model_name),
+                (true, false) => println!("✓ 3D model converted: {} (WRL only)", model_name),
+                (false, true) => println!("✓ 3D model converted: {} (STEP only)", model_name),
+                (false, false) => println!("⚠ 3D model not available"),
             }
         } else {
             log::warn!("No 3D model metadata available for this component");

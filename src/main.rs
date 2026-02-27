@@ -504,6 +504,8 @@ async fn process_component(args: &Cli, api: &EasyedaApi, lib_manager: &LibraryMa
             // Apply bbox normalization for footprint coordinates
             let adjusted_x = ee_pad.x - component_data.package_bbox_x;
             let adjusted_y = ee_pad.y - component_data.package_bbox_y;
+            let adjusted_x_mm = converter.px_to_mm(adjusted_x);
+            let adjusted_y_mm = converter.px_to_mm(adjusted_y);
 
             // Handle polygon pads
             let (size_x, size_y, rotation, polygon) = if ee_pad.shape == "POLYGON" && !ee_pad.points.is_empty() {
@@ -521,8 +523,8 @@ async fn process_component(args: &Cli, api: &EasyedaApi, lib_manager: &LibraryMa
                         if i + 1 < coords.len() {
                             let abs_x_mm = converter.px_to_mm(coords[i] - component_data.package_bbox_x);
                             let abs_y_mm = converter.px_to_mm(coords[i + 1] - component_data.package_bbox_y);
-                            let rel_x = abs_x_mm - adjusted_x;
-                            let rel_y = abs_y_mm - adjusted_y;
+                            let rel_x = abs_x_mm - adjusted_x_mm;
+                            let rel_y = abs_y_mm - adjusted_y_mm;
                             poly_str.push_str(&format!(" (xy {:.2} {:.2})", rel_x, rel_y));
                         }
                     }

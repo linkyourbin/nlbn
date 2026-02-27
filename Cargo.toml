@@ -1,6 +1,6 @@
 [package]
 name = "nlbn"
-version = "1.0.10"
+version = "1.0.11"
 edition = "2024"
 authors = ["linkyourbin"]
 description = "Fast and reliable EasyEDA/LCSC to KiCad converter with batch processing support"

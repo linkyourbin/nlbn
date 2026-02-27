@@ -10,7 +10,7 @@ impl EasyedaApi {
     pub fn new() -> Self {
         Self {
             client: Client::builder()
-                .user_agent("nlbn/1.0.11")
+                .user_agent("nlbn/1.0.12")
                 .build()
                 .expect("Failed to create HTTP client"),
         }

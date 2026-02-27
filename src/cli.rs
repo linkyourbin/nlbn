@@ -8,20 +8,12 @@ use crate::error::{AppError, Result};
 #[command(about = "Fast EasyEDA/LCSC to KiCad converter with parallel downloads", long_about = None)]
 pub struct Cli {
     /// LCSC component ID (e.g., C2040)
-    #[arg(long, value_name = "ID", conflicts_with_all = ["batch", "remove"])]
+    #[arg(long, value_name = "ID", conflicts_with = "batch")]
     pub lcsc_id: Option<String>,
 
     /// Batch mode: read LCSC IDs from a file (one ID per line)
-    #[arg(long, value_name = "FILE", conflicts_with_all = ["lcsc_id", "remove"])]
+    #[arg(long, value_name = "FILE", conflicts_with = "lcsc_id")]
     pub batch: Option<PathBuf>,
-
-    /// Remove mode: remove component by LCSC ID
-    #[arg(long, value_name = "ID", conflicts_with_all = ["lcsc_id", "batch"])]
-    pub remove: Option<String>,
-
-    /// Directory to remove component from (use with --remove)
-    #[arg(long, value_name = "DIR", requires = "remove")]
-    pub from: Option<PathBuf>,
 
     /// Convert symbol only
     #[arg(long)]
@@ -70,28 +62,10 @@ pub struct Cli {
 
 impl Cli {
     pub fn validate(&self) -> Result<()> {
-        // Remove mode validation
-        if self.remove.is_some() {
-            if self.from.is_none() {
-                return Err(AppError::Other(
-                    "--from directory must be specified when using --remove".to_string()
-                ));
-            }
-            // Validate LCSC ID format
-            if let Some(ref id) = self.remove {
-                if !id.starts_with('C') || id.len() < 2 {
-                    return Err(AppError::Easyeda(
-                        crate::error::EasyedaError::InvalidLcscId(id.clone())
-                    ));
-                }
-            }
-            return Ok(());
-        }
-
         // Check if at least one ID source is provided
         if self.lcsc_id.is_none() && self.batch.is_none() {
             return Err(AppError::Other(
-                "Either --lcsc-id, --batch, or --remove must be specified".to_string()
+                "Either --lcsc-id or --batch must be specified".to_string()
             ));
         }
 
@@ -149,10 +123,6 @@ impl Cli {
         } else {
             KicadVersion::V6
         }
-    }
-
-    pub fn is_remove_mode(&self) -> bool {
-        self.remove.is_some()
     }
 }
 

@@ -1042,9 +1042,19 @@ fn remove_component_from_symbol_lib(lib_path: &std::path::Path, lcsc_id: &str) -
         let mut file = fs::File::create(lib_path)
             .map_err(|e| error::AppError::Other(format!("Failed to write symbol library: {}", e)))?;
 
+        let mut prev_empty = false;
         for line in new_lines {
+            let is_empty = line.trim().is_empty();
+
+            // Skip consecutive empty lines
+            if is_empty && prev_empty {
+                continue;
+            }
+
             writeln!(file, "{}", line)
                 .map_err(|e| error::AppError::Other(format!("Failed to write line: {}", e)))?;
+
+            prev_empty = is_empty;
         }
     }
 

@@ -1,0 +1,27 @@
+# Rust
+/target/
+Cargo.lock
+
+# Output
+/test_output/
+*.log
+/output/
+/tmp/
+/lib/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude
+.claude/
+
+# lscs_id
+lscs_id.txt

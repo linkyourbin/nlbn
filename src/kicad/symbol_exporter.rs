@@ -343,7 +343,7 @@ impl SymbolExporter {
         }
 
         let width = self.converter.px_to_mm(polyline.stroke_width);
-        let fill = if polyline.fill { "background" } else { "none" };
+        let fill = if polyline.fill { "outline" } else { "none" };
 
         output.push_str("      )\n");
         output.push_str(&format!("      (stroke (width {:.4}) (type default))\n", width));

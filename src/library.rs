@@ -134,27 +134,35 @@ impl LibraryManager {
         // Try v6 format: find symbol block by matching parentheses
         let search = format!(r#"(symbol "{}""#, component_name);
         if let Some(start) = content.find(&search) {
-            // Walk back to find the opening '(' before "symbol"
-            let block_start = content[..start].rfind('(').unwrap_or(start);
-            // Count parentheses to find the matching close
+            // Walk back to consume leading whitespace/newline before (symbol
+            let mut block_start = start;
+            while block_start > 0 && content.as_bytes()[block_start - 1] == b' ' {
+                block_start -= 1;
+            }
+            if block_start > 0 && content.as_bytes()[block_start - 1] == b'\n' {
+                block_start -= 1;
+            }
+
+            // Count parentheses from start to find the matching close
             let mut depth = 0;
-            let mut block_end = block_start;
-            for (i, ch) in content[block_start..].char_indices() {
+            let mut block_end = start;
+            for (i, ch) in content[start..].char_indices() {
                 match ch {
                     '(' => depth += 1,
                     ')' => {
                         depth -= 1;
                         if depth == 0 {
-                            block_end = block_start + i + 1;
+                            block_end = start + i + 1;
                             break;
                         }
                     }
                     _ => {}
                 }
             }
-            if block_end > block_start {
+            if block_end > start {
                 let mut new_content = String::with_capacity(content.len());
                 new_content.push_str(&content[..block_start]);
+                new_content.push('\n');
                 new_content.push_str(new_data);
                 new_content.push_str(&content[block_end..]);
                 fs::write(lib_path, &new_content)

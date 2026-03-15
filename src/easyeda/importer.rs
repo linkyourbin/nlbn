@@ -439,8 +439,9 @@ impl SymbolImporter {
         let points_str = fields[1];
         let points = Self::parse_points(points_str)?;
 
-        let stroke_width = if fields.len() > 2 {
-            fields[2].parse::<f64>().unwrap_or(1.0)
+        // PL~points~stroke_color~stroke_width~stroke_style~fill_color~id~locked
+        let stroke_width = if fields.len() > 3 {
+            fields[3].parse::<f64>().unwrap_or(1.0)
         } else {
             1.0
         };
@@ -459,13 +460,15 @@ impl SymbolImporter {
         let points_str = fields[1];
         let points = Self::parse_points(points_str)?;
 
-        let stroke_width = if fields.len() > 2 {
-            fields[2].parse::<f64>().unwrap_or(1.0)
+        let stroke_width = if fields.len() > 3 {
+            fields[3].parse::<f64>().unwrap_or(1.0)
         } else {
             1.0
         };
 
-        let fill = fields.len() > 7 && fields[7] == "1";
+        // PG~points~stroke_color~stroke_width~stroke_style~fill_color~id~locked
+        // fill_color is at index 5; filled if not empty and not "none"
+        let fill = fields.len() > 5 && !fields[5].is_empty() && fields[5] != "none";
 
         Ok(EePolygon {
             points,

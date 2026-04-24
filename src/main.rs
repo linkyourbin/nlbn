@@ -1,4 +1,4 @@
-use clap::Parser;
+use clap::{CommandFactory, Parser};
 use indicatif::{ProgressBar, ProgressStyle};
 use nlbn::checkpoint::{append_checkpoint, load_checkpoint};
 use nlbn::*;
@@ -25,8 +25,18 @@ async fn main() {
         })
         .init();
 
+    if std::env::args_os().len() == 1 {
+        print_version_and_help();
+        return;
+    }
+
     // Parse CLI arguments
     let args = Cli::parse();
+
+    if args.prompt {
+        println!("{}", Cli::prompt_examples());
+        return;
+    }
 
     // Set debug logging if requested
     if args.debug {
@@ -38,6 +48,15 @@ async fn main() {
         eprintln!("Error: {}", e);
         process::exit(1);
     }
+}
+
+fn print_version_and_help() {
+    println!("nlbn {}", env!("CARGO_PKG_VERSION"));
+    println!();
+
+    let mut cmd = Cli::command();
+    cmd.print_help().expect("failed to print help");
+    println!();
 }
 
 async fn run(args: Cli) -> error::Result<()> {

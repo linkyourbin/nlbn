@@ -52,6 +52,12 @@ cargo build --release
 ### Single Component
 
 ```bash
+# Show version and help
+nlbn
+
+# Show frequently used command lines
+nlbn --prompt
+
 # Convert everything (symbol + footprint + 3D model)
 nlbn --full --lcsc-id C2040
 
@@ -93,10 +99,10 @@ Options:
   --symbol-lib <FILE>     Existing symbol library file to append/update
   --footprint-lib <DIR>   Existing footprint library directory to append/update
   --model-lib <DIR>       Existing 3D model library directory to append/update
+  --prompt                Show frequently used command lines
   --parallel <N>          Parallel threads for batch mode [default: 4]
   --continue-on-error     Skip failed components in batch mode
   --overwrite             Overwrite existing components
-  --v5                    Use KiCad v5 legacy format
   --debug                 Enable debug logging
   -h, --help              Print help
 ```
@@ -141,8 +147,6 @@ nlbn --full --lcsc-id C529356 \
 # Resume interrupted batch (skip existing)
 nlbn --full --batch components.txt --continue-on-error
 
-# KiCad v5 format
-nlbn --full --lcsc-id C529356 --v5
 ```
 
 ## License

@@ -495,11 +495,9 @@ impl LibraryManager {
     }
 
     /// Get the symbol library path
-    pub fn get_symbol_lib_path(&self, v5: bool) -> PathBuf {
+    pub fn get_symbol_lib_path(&self) -> PathBuf {
         if let Some(path) = &self.symbol_lib_override {
             path.clone()
-        } else if v5 {
-            self.output_path.join(format!("{}.lib", self.lib_name))
         } else {
             self.output_path
                 .join(format!("{}.kicad_sym", self.lib_name))
@@ -560,7 +558,7 @@ mod tests {
 
         let manager = LibraryManager::from_cli(&cli).unwrap();
         assert_eq!(
-            manager.get_symbol_lib_path(false),
+            manager.get_symbol_lib_path(),
             PathBuf::from("out").join("custom.kicad_sym")
         );
         assert_eq!(manager.footprint_lib_name(), "custom");
@@ -587,7 +585,7 @@ mod tests {
 
         let manager = LibraryManager::from_cli(&cli).unwrap();
         assert_eq!(
-            manager.get_symbol_lib_path(false),
+            manager.get_symbol_lib_path(),
             PathBuf::from("libs/custom.kicad_sym")
         );
         assert_eq!(manager.footprint_lib_name(), "board");
@@ -626,7 +624,7 @@ mod tests {
 
         manager
             .add_or_update_component(
-                &manager.get_symbol_lib_path(false),
+                &manager.get_symbol_lib_path(),
                 "Part_C1",
                 r#"  (symbol "Part_C1")"#,
                 false,
@@ -634,7 +632,7 @@ mod tests {
             .unwrap();
         manager
             .add_or_update_component(
-                &manager.get_symbol_lib_path(false),
+                &manager.get_symbol_lib_path(),
                 "Part_C2",
                 r#"  (symbol "Part_C2")"#,
                 false,
@@ -653,7 +651,7 @@ mod tests {
         let root = temp_dir("symbol-skip");
         let manager = LibraryManager::new(&root);
         manager.create_directories().unwrap();
-        let lib_path = manager.get_symbol_lib_path(false);
+        let lib_path = manager.get_symbol_lib_path();
 
         let first = manager
             .add_or_update_component(&lib_path, "Part_C1", r#"  (symbol "Part_C1")"#, false)

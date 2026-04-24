@@ -39,7 +39,7 @@ pub struct Cli {
     #[arg(long, value_name = "NAME")]
     pub lib_name: Option<String>,
 
-    /// Existing symbol library file to append/update (.kicad_sym or .lib)
+    /// Existing symbol library file to append/update (.kicad_sym)
     #[arg(long, value_name = "FILE")]
     pub symbol_lib: Option<PathBuf>,
 
@@ -51,13 +51,13 @@ pub struct Cli {
     #[arg(long, value_name = "DIR")]
     pub model_lib: Option<PathBuf>,
 
+    /// Show frequently used command lines
+    #[arg(long)]
+    pub prompt: bool,
+
     /// Overwrite existing components
     #[arg(long)]
     pub overwrite: bool,
-
-    /// Use KiCad v5 legacy format
-    #[arg(long)]
-    pub v5: bool,
 
     /// Use project-relative paths (KIPRJMOD) instead of global paths for 3D models
     #[arg(long)]
@@ -78,6 +78,10 @@ pub struct Cli {
 
 impl Cli {
     pub fn validate(&self) -> Result<()> {
+        if self.prompt {
+            return Ok(());
+        }
+
         // Check if at least one ID source is provided
         if self.lcsc_id.is_none() && self.batch.is_none() {
             return Err(AppError::Other(
@@ -108,12 +112,10 @@ impl Cli {
         }
 
         if let Some(symbol_lib) = &self.symbol_lib {
-            let expected_suffix = if self.v5 { ".lib" } else { ".kicad_sym" };
-            if !path_ends_with(symbol_lib, expected_suffix) {
-                return Err(AppError::Other(format!(
-                    "--symbol-lib must point to a {} file when --v5 is {}",
-                    expected_suffix, self.v5
-                )));
+            if !path_ends_with(symbol_lib, ".kicad_sym") {
+                return Err(AppError::Other(
+                    "--symbol-lib must point to a .kicad_sym file".to_string(),
+                ));
             }
         }
 
@@ -169,11 +171,7 @@ impl Cli {
     }
 
     pub fn kicad_version(&self) -> KicadVersion {
-        if self.v5 {
-            KicadVersion::V5
-        } else {
-            KicadVersion::V6
-        }
+        KicadVersion::V6
     }
 
     pub fn resolved_lib_name(&self) -> String {
@@ -184,6 +182,35 @@ impl Cli {
                 .unwrap_or("nlbn")
                 .to_string()
         })
+    }
+
+    pub fn prompt_examples() -> &'static str {
+        r#"Frequently used command lines:
+
+# Show version and help
+nlbn
+
+# Show these examples
+nlbn --prompt
+
+# Convert everything for one part
+nlbn --full --lcsc-id C2040
+
+# Convert only the symbol
+nlbn --symbol --lcsc-id C2040
+
+# Batch convert from a file
+nlbn --full --batch components.txt --parallel 8
+
+# Append into an existing library set under one output directory
+nlbn --full --lcsc-id C2040 -o ./kicad-libs --lib-name MyParts
+
+# Append into explicit existing symbol / footprint / 3D libraries
+nlbn --full --lcsc-id C2040 --symbol-lib ./kicad/MyParts.kicad_sym --footprint-lib ./kicad/MyParts.pretty --model-lib ./kicad/MyParts.3dshapes
+
+# Replace existing symbol / footprint / 3D files instead of skipping them
+nlbn --full --lcsc-id C2040 --symbol-lib ./kicad/MyParts.kicad_sym --footprint-lib ./kicad/MyParts.pretty --model-lib ./kicad/MyParts.3dshapes --overwrite
+"#
     }
 }
 
@@ -251,5 +278,11 @@ mod tests {
 
         let err = cli.validate().unwrap_err().to_string();
         assert!(err.contains("--model-lib must point to a .3dshapes directory"));
+    }
+
+    #[test]
+    fn prompt_mode_skips_conversion_validation() {
+        let cli = Cli::try_parse_from(["nlbn", "--prompt"]).unwrap();
+        cli.validate().unwrap();
     }
 }

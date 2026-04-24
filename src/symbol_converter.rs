@@ -289,7 +289,7 @@ pub fn convert_symbol(
     let exporter = kicad::SymbolExporter::new(args.kicad_version());
     let symbol_data = exporter.export(&ki_symbol)?;
 
-    let lib_path = lib_manager.get_symbol_lib_path(args.v5);
+    let lib_path = lib_manager.get_symbol_lib_path();
 
     // Use thread-safe add_or_update method
     let status = lib_manager.add_or_update_component(

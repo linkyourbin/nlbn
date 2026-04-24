@@ -1,7 +1,7 @@
+use crate::cli::KicadVersion;
 use crate::converter::Converter;
 use crate::error::Result;
 use crate::kicad::footprint::*;
-use crate::cli::KicadVersion;
 
 pub struct FootprintExporter {
     converter: Converter,
@@ -18,7 +18,10 @@ impl FootprintExporter {
         let mut output = String::new();
 
         // Module header
-        output.push_str(&format!("(footprint \"{}\" (version 20221018) (generator nlbn)\n", footprint.name));
+        output.push_str(&format!(
+            "(footprint \"{}\" (version 20221018) (generator nlbn)\n",
+            footprint.name
+        ));
         output.push_str("  (layer \"F.Cu\")\n");
 
         // Reference and value text
@@ -26,7 +29,10 @@ impl FootprintExporter {
         output.push_str("    (effects (font (size 1 1) (thickness 0.15)))\n");
         output.push_str("  )\n");
 
-        output.push_str(&format!("  (fp_text value \"{}\" (at 0 2.5) (layer \"F.Fab\")\n", footprint.name));
+        output.push_str(&format!(
+            "  (fp_text value \"{}\" (at 0 2.5) (layer \"F.Fab\")\n",
+            footprint.name
+        ));
         output.push_str("    (effects (font (size 1 1) (thickness 0.15)))\n");
         output.push_str("  )\n");
 
@@ -67,7 +73,7 @@ impl FootprintExporter {
 
     fn format_pad(&self, pad: &KiPad) -> String {
         let x = self.converter.px_to_mm(pad.pos_x);
-        let y = self.converter.px_to_mm(pad.pos_y);  // No flip_y for footprints
+        let y = self.converter.px_to_mm(pad.pos_y); // No flip_y for footprints
         let size_x = self.converter.px_to_mm(pad.size_x);
         let size_y = self.converter.px_to_mm(pad.size_y);
 
@@ -99,7 +105,10 @@ impl FootprintExporter {
             if let Some(width) = drill.width {
                 // Elliptical drill
                 let drill_width = self.converter.px_to_mm(width);
-                output.push_str(&format!(" (drill oval {:.4} {:.4})", drill_dia, drill_width));
+                output.push_str(&format!(
+                    " (drill oval {:.4} {:.4})",
+                    drill_dia, drill_width
+                ));
             } else {
                 // Circular drill
                 output.push_str(&format!(" (drill {:.4})", drill_dia));
@@ -118,9 +127,9 @@ impl FootprintExporter {
 
     fn format_line(&self, line: &KiLine) -> String {
         let start_x = self.converter.px_to_mm(line.start_x);
-        let start_y = self.converter.px_to_mm(line.start_y);  // No flip_y for footprints
+        let start_y = self.converter.px_to_mm(line.start_y); // No flip_y for footprints
         let end_x = self.converter.px_to_mm(line.end_x);
-        let end_y = self.converter.px_to_mm(line.end_y);  // No flip_y for footprints
+        let end_y = self.converter.px_to_mm(line.end_y); // No flip_y for footprints
         let width = self.converter.px_to_mm(line.width);
 
         format!(
@@ -131,9 +140,9 @@ impl FootprintExporter {
 
     fn format_circle(&self, circle: &KiCircle) -> String {
         let center_x = self.converter.px_to_mm(circle.center_x);
-        let center_y = self.converter.px_to_mm(circle.center_y);  // No flip_y for footprints
+        let center_y = self.converter.px_to_mm(circle.center_y); // No flip_y for footprints
         let end_x = self.converter.px_to_mm(circle.end_x);
-        let end_y = self.converter.px_to_mm(circle.end_y);  // No flip_y for footprints
+        let end_y = self.converter.px_to_mm(circle.end_y); // No flip_y for footprints
         let width = self.converter.px_to_mm(circle.width);
 
         let fill = if circle.fill { "solid" } else { "none" };
@@ -146,11 +155,11 @@ impl FootprintExporter {
 
     fn format_arc(&self, arc: &KiArc) -> String {
         let start_x = self.converter.px_to_mm(arc.start_x);
-        let start_y = self.converter.px_to_mm(arc.start_y);  // No flip_y for footprints
+        let start_y = self.converter.px_to_mm(arc.start_y); // No flip_y for footprints
         let mid_x = self.converter.px_to_mm(arc.mid_x);
-        let mid_y = self.converter.px_to_mm(arc.mid_y);  // No flip_y for footprints
+        let mid_y = self.converter.px_to_mm(arc.mid_y); // No flip_y for footprints
         let end_x = self.converter.px_to_mm(arc.end_x);
-        let end_y = self.converter.px_to_mm(arc.end_y);  // No flip_y for footprints
+        let end_y = self.converter.px_to_mm(arc.end_y); // No flip_y for footprints
         let width = self.converter.px_to_mm(arc.width);
 
         format!(
@@ -161,30 +170,35 @@ impl FootprintExporter {
 
     fn format_text(&self, text: &KiText) -> String {
         let x = self.converter.px_to_mm(text.pos_x);
-        let y = self.converter.px_to_mm(text.pos_y);  // No flip_y for footprints
+        let y = self.converter.px_to_mm(text.pos_y); // No flip_y for footprints
         let size = self.converter.px_to_mm(text.size);
         let thickness = self.converter.px_to_mm(text.thickness);
 
-        format!(
-            "  (fp_text user \"{}\" (at {:.4} {:.4}",
-            text.text, x, y
-        ) + &(if text.rotation != 0.0 {
-            format!(" {:.4}", text.rotation)
-        } else {
-            String::new()
-        }) + &format!(
-            ") (layer \"{}\")\n    (effects (font (size {:.4} {:.4}) (thickness {:.4})))\n  )\n",
-            text.layer, size, size, thickness
-        )
+        format!("  (fp_text user \"{}\" (at {:.4} {:.4}", text.text, x, y)
+            + &(if text.rotation != 0.0 {
+                format!(" {:.4}", text.rotation)
+            } else {
+                String::new()
+            })
+            + &format!(
+                ") (layer \"{}\")\n    (effects (font (size {:.4} {:.4}) (thickness {:.4})))\n  )\n",
+                text.layer, size, size, thickness
+            )
     }
 
     fn format_3d_model(&self, model: &Ki3dModel) -> String {
         format!(
             "  (model \"{}\"\n    (offset (xyz {:.4} {:.4} {:.4}))\n    (scale (xyz {:.4} {:.4} {:.4}))\n    (rotate (xyz {:.4} {:.4} {:.4}))\n  )\n",
             model.path,
-            model.offset.0, model.offset.1, model.offset.2,
-            model.scale.0, model.scale.1, model.scale.2,
-            model.rotate.0, model.rotate.1, model.rotate.2
+            model.offset.0,
+            model.offset.1,
+            model.offset.2,
+            model.scale.0,
+            model.scale.1,
+            model.scale.2,
+            model.rotate.0,
+            model.rotate.1,
+            model.rotate.2
         )
     }
 }

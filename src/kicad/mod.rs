@@ -1,20 +1,18 @@
-pub mod symbol;
 pub mod footprint;
-pub mod symbol_exporter;
 pub mod footprint_exporter;
-pub mod model_exporter;
 pub mod layers;
+pub mod model_exporter;
+pub mod symbol;
+pub mod symbol_exporter;
 
-pub use symbol::{KiSymbol, KiPin, KiRectangle, KiCircle, KiPolyline, PinType, PinStyle};
-pub use symbol::KiText as SymbolKiText;
-pub use symbol::KiArc as SymbolKiArc;
 pub use footprint::{
-    KiFootprint, KiPad, KiTrack, KiLine, KiText, Ki3dModel, Drill,
-    PadType, PadShape,
-    KiCircle as FootprintKiCircle,
-    KiArc as FootprintKiArc,
+    Drill, Ki3dModel, KiArc as FootprintKiArc, KiCircle as FootprintKiCircle, KiFootprint, KiLine,
+    KiPad, KiText, KiTrack, PadShape, PadType,
 };
-pub use symbol_exporter::SymbolExporter;
 pub use footprint_exporter::FootprintExporter;
-pub use model_exporter::ModelExporter;
 pub use layers::*;
+pub use model_exporter::ModelExporter;
+pub use symbol::KiArc as SymbolKiArc;
+pub use symbol::KiText as SymbolKiText;
+pub use symbol::{KiCircle, KiPin, KiPolyline, KiRectangle, KiSymbol, PinStyle, PinType};
+pub use symbol_exporter::SymbolExporter;

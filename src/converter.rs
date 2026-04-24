@@ -7,7 +7,9 @@ pub struct Converter {
 
 impl Converter {
     pub fn new(kicad_version: KicadVersion) -> Self {
-        Self { _kicad_version: kicad_version }
+        Self {
+            _kicad_version: kicad_version,
+        }
     }
 
     /// Convert pixels to mils (1 px = 10 mils in EasyEDA)
@@ -58,7 +60,10 @@ impl Converter {
 
         // Handle degenerate cases
         if (x1 - x2).abs() < 1e-10 && (y1 - y2).abs() < 1e-10 {
-            return Err(ConversionError::ArcConversion("Start and end points are identical".to_string()).into());
+            return Err(ConversionError::ArcConversion(
+                "Start and end points are identical".to_string(),
+            )
+            .into());
         }
 
         if rx.abs() < 1e-10 || ry.abs() < 1e-10 {

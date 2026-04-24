@@ -1,10 +1,12 @@
+use crate::cli::Cli;
 use crate::converter::sanitize_name;
 use crate::easyeda::{ComponentData, EasyedaApi};
 use crate::error::Result;
 use crate::kicad::ModelExporter;
-use crate::library::LibraryManager;
+use crate::library::{FileWriteStatus, LibraryManager};
 
 pub async fn convert_3d_model(
+    args: &Cli,
     api: &EasyedaApi,
     component_data: &ComponentData,
     lib_manager: &LibraryManager,
@@ -17,42 +19,72 @@ pub async fn convert_3d_model(
         let model_name = format!("{}_{}", sanitize_name(&model_info.title), lcsc_id);
         let exporter = ModelExporter::new();
 
-        let mut has_wrl = false;
-        let mut has_step = false;
-
-        // Download OBJ and STEP in parallel
-        let obj_future = api.download_3d_obj(&model_info.uuid);
+        let wrl_path = lib_manager.get_wrl_path(&model_name);
         let step_path = lib_manager.get_step_path(&model_name);
-        let step_future = api.download_3d_to_file(&model_info.uuid, "STEP", &step_path);
+        let need_wrl = args.overwrite || !wrl_path.exists();
+        let need_step = args.overwrite || !step_path.exists();
+
+        if !need_wrl && !need_step {
+            println!("Skipped existing 3D model: {}", model_name);
+            return Ok(());
+        }
+
+        let obj_future = async {
+            if need_wrl {
+                Some(api.download_3d_obj(&model_info.uuid).await)
+            } else {
+                None
+            }
+        };
+        let step_future = async {
+            if need_step {
+                Some(
+                    api.download_3d_to_file(&model_info.uuid, "STEP", &step_path)
+                        .await,
+                )
+            } else {
+                None
+            }
+        };
 
         let (obj_result, step_result) = tokio::join!(obj_future, step_future);
 
-        // Process OBJ -> WRL
-        match obj_result {
-            Ok(obj_data) => {
-                match exporter.obj_to_wrl(&obj_data) {
+        let mut has_wrl = !need_wrl;
+        let mut has_step = !need_step;
+
+        if let Some(obj_result) = obj_result {
+            match obj_result {
+                Ok(obj_data) => match exporter.obj_to_wrl(&obj_data) {
                     Ok(wrl_data) => {
-                        match lib_manager.write_wrl_model(&model_name, &wrl_data) {
-                            Ok(_) => {
+                        match lib_manager.write_wrl_model_if_needed(
+                            &model_name,
+                            &wrl_data,
+                            args.overwrite,
+                        ) {
+                            Ok((_, FileWriteStatus::Written)) => {
                                 log::info!("\u{2713} WRL model converted: {}", model_name);
+                                has_wrl = true;
+                            }
+                            Ok((_, FileWriteStatus::Skipped)) => {
                                 has_wrl = true;
                             }
                             Err(e) => log::warn!("Failed to write WRL model: {}", e),
                         }
                     }
                     Err(e) => log::warn!("Failed to convert OBJ to WRL: {}", e),
-                }
+                },
+                Err(e) => log::warn!("Failed to download OBJ model: {}", e),
             }
-            Err(e) => log::warn!("Failed to download OBJ model: {}", e),
         }
 
-        // Process STEP result
-        match step_result {
-            Ok(_) => {
-                log::info!("\u{2713} STEP model converted: {}", model_name);
-                has_step = true;
+        if let Some(step_result) = step_result {
+            match step_result {
+                Ok(_) => {
+                    log::info!("\u{2713} STEP model converted: {}", model_name);
+                    has_step = true;
+                }
+                Err(e) => log::warn!("Failed to download STEP model: {}", e),
             }
-            Err(e) => log::warn!("Failed to download STEP model: {}", e),
         }
 
         match (has_wrl, has_step) {

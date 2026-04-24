@@ -1,9 +1,9 @@
-use crate::converter::{sanitize_name, Converter};
+use crate::cli::Cli;
+use crate::converter::{Converter, sanitize_name};
 use crate::easyeda::{ComponentData, SymbolImporter};
 use crate::error::Result;
 use crate::kicad;
-use crate::library::LibraryManager;
-use crate::cli::Cli;
+use crate::library::{LibraryManager, SymbolWriteStatus};
 
 pub fn convert_symbol(
     args: &Cli,
@@ -22,7 +22,7 @@ pub fn convert_symbol(
         reference: ee_symbol.prefix.clone(),
         value: component_data.title.clone(),
         description: component_data.description.clone(),
-        footprint: format!("{}:{}", lib_manager.lib_name(), footprint_name),
+        footprint: format!("{}:{}", lib_manager.footprint_lib_name(), footprint_name),
         datasheet: component_data.datasheet.clone(),
         manufacturer: component_data.manufacturer.clone(),
         lcsc_id: component_data.lcsc_id.clone(),
@@ -38,20 +38,35 @@ pub fn convert_symbol(
     // Convert pins with bbox adjustment
     let _converter = Converter::new(args.kicad_version());
 
-    log::debug!("bbox_x = {}, bbox_y = {}", component_data.bbox_x, component_data.bbox_y);
+    log::debug!(
+        "bbox_x = {}, bbox_y = {}",
+        component_data.bbox_x,
+        component_data.bbox_y
+    );
 
     for ee_pin in &ee_symbol.pins {
         let adjusted_x = ee_pin.x - component_data.bbox_x;
         let adjusted_y = ee_pin.y - component_data.bbox_y;
 
         if ee_pin.name.contains("PG10") {
-            log::info!("PG10 pin: raw x={}, y={}, adjusted x={}, y={}, final y={}",
-                ee_pin.x, ee_pin.y, adjusted_x, adjusted_y, -adjusted_y);
+            log::info!(
+                "PG10 pin: raw x={}, y={}, adjusted x={}, y={}, final y={}",
+                ee_pin.x,
+                ee_pin.y,
+                adjusted_x,
+                adjusted_y,
+                -adjusted_y
+            );
         }
 
         // Log pins with unusual length
         if ee_pin.length >= 100.0 {
-            log::warn!("Pin {} ({}) has unusual length: {}", ee_pin.number, ee_pin.name, ee_pin.length);
+            log::warn!(
+                "Pin {} ({}) has unusual length: {}",
+                ee_pin.number,
+                ee_pin.name,
+                ee_pin.length
+            );
         }
 
         ki_symbol.pins.push(kicad::KiPin {
@@ -66,7 +81,7 @@ pub fn convert_symbol(
                 kicad::PinStyle::Line
             },
             pos_x: adjusted_x,
-            pos_y: -adjusted_y,  // Back to negation to test
+            pos_y: -adjusted_y, // Back to negation to test
             rotation: ee_pin.rotation,
             length: ee_pin.length,
         });
@@ -75,15 +90,15 @@ pub fn convert_symbol(
     // Convert rectangles with bbox adjustment
     for (_idx, ee_rect) in ee_symbol.rectangles.iter().enumerate() {
         let adjusted_x = ee_rect.x - component_data.bbox_x;
-        let adjusted_y = component_data.bbox_y - ee_rect.y;  // bbox_y - pos_y
+        let adjusted_y = component_data.bbox_y - ee_rect.y; // bbox_y - pos_y
         let adjusted_x2 = (ee_rect.x + ee_rect.width) - component_data.bbox_x;
-        let adjusted_y2 = component_data.bbox_y - (ee_rect.y + ee_rect.height);  // bbox_y - (pos_y + height)
+        let adjusted_y2 = component_data.bbox_y - (ee_rect.y + ee_rect.height); // bbox_y - (pos_y + height)
 
         ki_symbol.rectangles.push(kicad::KiRectangle {
             x1: adjusted_x,
-            y1: adjusted_y,  // No negation
+            y1: adjusted_y, // No negation
             x2: adjusted_x2,
-            y2: adjusted_y2,  // No negation
+            y2: adjusted_y2, // No negation
             stroke_width: ee_rect.stroke_width,
             fill: true,
         });
@@ -92,11 +107,11 @@ pub fn convert_symbol(
     // Convert circles with bbox adjustment
     for ee_circle in &ee_symbol.circles {
         let adjusted_cx = ee_circle.cx - component_data.bbox_x;
-        let adjusted_cy = component_data.bbox_y - ee_circle.cy;  // bbox_y - pos_y
+        let adjusted_cy = component_data.bbox_y - ee_circle.cy; // bbox_y - pos_y
 
         ki_symbol.circles.push(kicad::KiCircle {
             cx: adjusted_cx,
-            cy: adjusted_cy,  // No negation
+            cy: adjusted_cy, // No negation
             radius: ee_circle.radius,
             stroke_width: ee_circle.stroke_width,
             fill: ee_circle.fill,
@@ -107,14 +122,14 @@ pub fn convert_symbol(
     // If rx == ry, treat as circle; otherwise, approximate as circle with average radius
     for ee_ellipse in &ee_symbol.ellipses {
         let adjusted_cx = ee_ellipse.cx - component_data.bbox_x;
-        let adjusted_cy = component_data.bbox_y - ee_ellipse.cy;  // bbox_y - pos_y
+        let adjusted_cy = component_data.bbox_y - ee_ellipse.cy; // bbox_y - pos_y
 
         // Use average of rx and ry as radius (or just rx if they're equal)
         let radius = (ee_ellipse.rx + ee_ellipse.ry) / 2.0;
 
         ki_symbol.circles.push(kicad::KiCircle {
             cx: adjusted_cx,
-            cy: adjusted_cy,  // No negation
+            cy: adjusted_cy, // No negation
             radius,
             stroke_width: ee_ellipse.stroke_width,
             fill: ee_ellipse.fill,
@@ -163,11 +178,13 @@ pub fn convert_symbol(
 
     // Convert polylines with bbox adjustment
     for ee_polyline in &ee_symbol.polylines {
-        let adjusted_points: Vec<(f64, f64)> = ee_polyline.points.iter()
+        let adjusted_points: Vec<(f64, f64)> = ee_polyline
+            .points
+            .iter()
             .map(|(x, y)| {
                 let adj_x = x - component_data.bbox_x;
-                let adj_y = component_data.bbox_y - y;  // bbox_y - pos_y
-                (adj_x, adj_y)  // No negation
+                let adj_y = component_data.bbox_y - y; // bbox_y - pos_y
+                (adj_x, adj_y) // No negation
             })
             .collect();
 
@@ -180,11 +197,13 @@ pub fn convert_symbol(
 
     // Convert polygons to polylines with bbox adjustment
     for ee_polygon in &ee_symbol.polygons {
-        let adjusted_points: Vec<(f64, f64)> = ee_polygon.points.iter()
+        let adjusted_points: Vec<(f64, f64)> = ee_polygon
+            .points
+            .iter()
             .map(|(x, y)| {
                 let adj_x = x - component_data.bbox_x;
-                let adj_y = component_data.bbox_y - y;  // bbox_y - pos_y
-                (adj_x, adj_y)  // No negation
+                let adj_y = component_data.bbox_y - y; // bbox_y - pos_y
+                (adj_x, adj_y) // No negation
             })
             .collect();
 
@@ -220,7 +239,9 @@ pub fn convert_symbol(
                             }
                         } else if i + 1 < tokens.len() {
                             // Separate x and y
-                            if let (Ok(x), Ok(y)) = (tokens[i].parse::<f64>(), tokens[i + 1].parse::<f64>()) {
+                            if let (Ok(x), Ok(y)) =
+                                (tokens[i].parse::<f64>(), tokens[i + 1].parse::<f64>())
+                            {
                                 let adj_x = x - component_data.bbox_x;
                                 let adj_y = component_data.bbox_y - y;
                                 points.push((adj_x, adj_y));
@@ -271,9 +292,21 @@ pub fn convert_symbol(
     let lib_path = lib_manager.get_symbol_lib_path(args.v5);
 
     // Use thread-safe add_or_update method
-    lib_manager.add_or_update_component(&lib_path, &ki_symbol.name, &symbol_data, args.overwrite)?;
+    let status = lib_manager.add_or_update_component(
+        &lib_path,
+        &ki_symbol.name,
+        &symbol_data,
+        args.overwrite,
+    )?;
 
-    println!("\u{2713} Symbol converted: {}", ki_symbol.name);
+    match status {
+        SymbolWriteStatus::Added | SymbolWriteStatus::Updated => {
+            println!("\u{2713} Symbol converted: {}", ki_symbol.name);
+        }
+        SymbolWriteStatus::Skipped => {
+            println!("Skipped existing symbol: {}", ki_symbol.name);
+        }
+    }
 
     Ok(())
 }

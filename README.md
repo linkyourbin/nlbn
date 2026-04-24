@@ -57,6 +57,9 @@ nlbn --full --lcsc-id C2040
 
 # Convert only symbol
 nlbn --symbol --lcsc-id C2040
+
+# Append to an existing KiCad library set
+nlbn --full --lcsc-id C2040 -o ./kicad-libs --lib-name MyParts
 ```
 
 ### Batch Processing
@@ -86,6 +89,10 @@ Options:
   --3d                    Convert 3D model only
   --full                  Convert all (symbol + footprint + 3D)
   -o, --output <PATH>     Output directory [default: .]
+  --lib-name <NAME>       Base library name under --output
+  --symbol-lib <FILE>     Existing symbol library file to append/update
+  --footprint-lib <DIR>   Existing footprint library directory to append/update
+  --model-lib <DIR>       Existing 3D model library directory to append/update
   --parallel <N>          Parallel threads for batch mode [default: 4]
   --continue-on-error     Skip failed components in batch mode
   --overwrite             Overwrite existing components
@@ -105,6 +112,8 @@ output/
     └── Component_Name.step
 ```
 
+Use `--lib-name` when you want to append into an existing `MyParts.kicad_sym`, `MyParts.pretty`, and `MyParts.3dshapes` set under one output directory. Use `--symbol-lib`, `--footprint-lib`, and `--model-lib` when you need to target explicit existing library locations. Existing symbol, footprint, and 3D files are skipped by default; pass `--overwrite` to replace them.
+
 ### Symbol
 
 <img src="imgs/symbol.png" alt="KiCad symbol" width="500"/>
@@ -122,6 +131,12 @@ output/
 ```bash
 # High-performance batch conversion
 nlbn --full --batch components.txt --parallel 16 -o ./library
+
+# Append to explicit existing symbol / footprint / 3D libraries
+nlbn --full --lcsc-id C529356 \
+  --symbol-lib ./kicad/MyParts.kicad_sym \
+  --footprint-lib ./kicad/MyParts.pretty \
+  --model-lib ./kicad/MyParts.3dshapes
 
 # Resume interrupted batch (skip existing)
 nlbn --full --batch components.txt --continue-on-error

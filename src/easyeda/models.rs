@@ -6,11 +6,11 @@ pub struct ComponentData {
     pub title: String,
     pub description: String,
     pub data_str: Vec<String>,
-    pub bbox_x: f64,  // Symbol bbox
-    pub bbox_y: f64,  // Symbol bbox
+    pub bbox_x: f64, // Symbol bbox
+    pub bbox_y: f64, // Symbol bbox
     pub package_detail: Vec<String>,
-    pub package_bbox_x: f64,  // Footprint bbox
-    pub package_bbox_y: f64,  // Footprint bbox
+    pub package_bbox_x: f64, // Footprint bbox
+    pub package_bbox_y: f64, // Footprint bbox
     pub model_3d: Option<Model3dInfo>,
     pub manufacturer: String,
     pub datasheet: String,
@@ -116,7 +116,7 @@ pub struct EeArc {
 pub struct EeFootprintArc {
     pub stroke_width: f64,
     pub layer_id: i32,
-    pub path: String,  // SVG path string: "M startX startY A rx ry rotation large_arc sweep endX endY"
+    pub path: String, // SVG path string: "M startX startY A rx ry rotation large_arc sweep endX endY"
 }
 
 #[derive(Debug, Clone)]
@@ -134,7 +134,7 @@ pub struct EePolygon {
 
 #[derive(Debug, Clone)]
 pub struct EePath {
-    pub path_data: String,  // SVG path string (e.g., "M 0,0 L 10,10")
+    pub path_data: String, // SVG path string (e.g., "M 0,0 L 10,10")
     pub stroke_width: f64,
     pub fill: bool,
 }
@@ -175,8 +175,8 @@ pub struct EePad {
     pub height: f64,
     pub rotation: f64,
     pub hole_radius: Option<f64>,
-    pub hole_length: Option<f64>,  // For elliptical drills
-    pub points: String,  // For polygon pads
+    pub hole_length: Option<f64>, // For elliptical drills
+    pub points: String,           // For polygon pads
     pub layer_id: i32,
 }
 
@@ -185,23 +185,23 @@ pub struct EeTrack {
     pub stroke_width: f64,
     pub layer_id: i32,
     pub net: String,
-    pub points: String,  // Space-separated coordinates: "x1 y1 x2 y2 x3 y3..."
+    pub points: String, // Space-separated coordinates: "x1 y1 x2 y2 x3 y3..."
 }
 
 #[derive(Debug, Clone)]
 pub struct EeHole {
     pub x: f64,
     pub y: f64,
-    pub radius: f64,  // EasyEDA stores radius, not diameter
+    pub radius: f64, // EasyEDA stores radius, not diameter
 }
 
 #[derive(Debug, Clone)]
 pub struct EeVia {
     pub x: f64,
     pub y: f64,
-    pub diameter: f64,  // Pad outer diameter
+    pub diameter: f64, // Pad outer diameter
     pub net: String,
-    pub radius: f64,    // Hole radius (drill = radius * 2)
+    pub radius: f64, // Hole radius (drill = radius * 2)
 }
 
 #[derive(Debug, Clone)]

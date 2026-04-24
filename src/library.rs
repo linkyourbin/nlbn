@@ -1,4 +1,5 @@
-use crate::error::{KicadError, Result};
+use crate::cli::Cli;
+use crate::error::{AppError, KicadError, Result};
 use regex::Regex;
 use std::fs;
 use std::io::{BufWriter, Write};
@@ -7,9 +8,28 @@ use std::sync::Mutex;
 
 static SYMBOL_WRITE_LOCK: Mutex<()> = Mutex::new(());
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SymbolWriteStatus {
+    Added,
+    Updated,
+    Skipped,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FileWriteStatus {
+    Written,
+    Skipped,
+}
+
 pub struct LibraryManager {
     output_path: PathBuf,
     lib_name: String,
+    symbol_lib_override: Option<PathBuf>,
+    footprint_lib_dir: PathBuf,
+    footprint_lib_name: String,
+    model_lib_dir: PathBuf,
+    model_lib_name: String,
+    model_dir_name: String,
 }
 
 impl LibraryManager {
@@ -19,31 +39,78 @@ impl LibraryManager {
             .and_then(|n| n.to_str())
             .unwrap_or("nlbn")
             .to_string();
+        let footprint_lib_dir = output_path.join(format!("{}.pretty", lib_name));
+        let model_dir_name = format!("{}.3dshapes", lib_name);
+        let model_lib_dir = output_path.join(&model_dir_name);
         Self {
             output_path: output_path.to_path_buf(),
-            lib_name,
+            lib_name: lib_name.clone(),
+            symbol_lib_override: None,
+            footprint_lib_dir,
+            footprint_lib_name: lib_name.clone(),
+            model_lib_dir,
+            model_lib_name: lib_name,
+            model_dir_name,
         }
+    }
+
+    pub fn from_cli(args: &Cli) -> Result<Self> {
+        let lib_name = args.resolved_lib_name();
+        let footprint_lib_dir = args
+            .footprint_lib
+            .clone()
+            .unwrap_or_else(|| args.output.join(format!("{}.pretty", lib_name)));
+        let model_lib_dir = args
+            .model_lib
+            .clone()
+            .unwrap_or_else(|| args.output.join(format!("{}.3dshapes", lib_name)));
+        let footprint_lib_name = Self::library_name_from_path(&footprint_lib_dir, ".pretty")?;
+        let model_dir_name = Self::path_name(&model_lib_dir)?;
+        let model_lib_name = Self::strip_required_suffix(&model_dir_name, ".3dshapes")?.to_string();
+
+        Ok(Self {
+            output_path: args.output.clone(),
+            lib_name,
+            symbol_lib_override: args.symbol_lib.clone(),
+            footprint_lib_dir,
+            footprint_lib_name,
+            model_lib_dir,
+            model_lib_name,
+            model_dir_name,
+        })
     }
 
     pub fn lib_name(&self) -> &str {
         &self.lib_name
     }
 
+    pub fn footprint_lib_name(&self) -> &str {
+        &self.footprint_lib_name
+    }
+
+    pub fn model_lib_name(&self) -> &str {
+        &self.model_lib_name
+    }
+
+    pub fn model_dir_name(&self) -> &str {
+        &self.model_dir_name
+    }
+
     /// Create necessary output directories
     pub fn create_directories(&self) -> Result<()> {
-        // Create main output directory
-        fs::create_dir_all(&self.output_path)
-            .map_err(KicadError::Io)?;
+        if let Some(symbol_lib_path) = &self.symbol_lib_override {
+            if let Some(parent) = symbol_lib_path.parent() {
+                if !parent.as_os_str().is_empty() {
+                    fs::create_dir_all(parent).map_err(KicadError::Io)?;
+                }
+            }
+        } else {
+            fs::create_dir_all(&self.output_path).map_err(KicadError::Io)?;
+        }
 
-        // Create .pretty directory for footprints
-        let pretty_dir = self.output_path.join(format!("{}.pretty", self.lib_name));
-        fs::create_dir_all(&pretty_dir)
-            .map_err(KicadError::Io)?;
+        fs::create_dir_all(&self.footprint_lib_dir).map_err(KicadError::Io)?;
 
-        // Create .3dshapes directory for 3D models
-        let shapes_dir = self.output_path.join(format!("{}.3dshapes", self.lib_name));
-        fs::create_dir_all(&shapes_dir)
-            .map_err(KicadError::Io)?;
+        fs::create_dir_all(&self.model_lib_dir).map_err(KicadError::Io)?;
 
         Ok(())
     }
@@ -55,8 +122,7 @@ impl LibraryManager {
             return Ok(false);
         }
 
-        let content = fs::read_to_string(lib_path)
-            .map_err(KicadError::Io)?;
+        let content = fs::read_to_string(lib_path).map_err(KicadError::Io)?;
 
         // Check for v6 format
         let v6_pattern = format!(r#"\(symbol\s+"{}""#, regex::escape(component_name));
@@ -78,14 +144,19 @@ impl LibraryManager {
     }
 
     /// Add or update a component in the library file (thread-safe)
-    pub fn add_or_update_component(&self, lib_path: &Path, component_name: &str, component_data: &str, overwrite: bool) -> Result<()> {
+    pub fn add_or_update_component(
+        &self,
+        lib_path: &Path,
+        component_name: &str,
+        component_data: &str,
+        overwrite: bool,
+    ) -> Result<SymbolWriteStatus> {
         // Lock to prevent concurrent writes and check-then-act race conditions
         let _lock = SYMBOL_WRITE_LOCK.lock().unwrap();
 
         // Check if component exists (within lock to prevent TOCTOU)
         let exists = if lib_path.exists() {
-            let content = fs::read_to_string(lib_path)
-                .map_err(KicadError::Io)?;
+            let content = fs::read_to_string(lib_path).map_err(KicadError::Io)?;
 
             let v6_pattern = format!(r#"\(symbol\s+"{}""#, regex::escape(component_name));
             if let Ok(re) = Regex::new(&v6_pattern) {
@@ -100,20 +171,21 @@ impl LibraryManager {
         if exists && overwrite {
             // Update existing component
             self.update_component_internal(lib_path, component_name, component_data)?;
+            return Ok(SymbolWriteStatus::Updated);
         } else if !exists {
             // Add new component
             self.add_component_internal(lib_path, component_data)?;
+            return Ok(SymbolWriteStatus::Added);
         }
         // If exists and !overwrite, do nothing
 
-        Ok(())
+        Ok(SymbolWriteStatus::Skipped)
     }
 
     /// Internal add component (assumes lock is held)
     fn add_component_internal(&self, lib_path: &Path, component_data: &str) -> Result<()> {
         let mut content = if lib_path.exists() {
-            let existing = fs::read_to_string(lib_path)
-                .map_err(KicadError::Io)?;
+            let existing = fs::read_to_string(lib_path).map_err(KicadError::Io)?;
             existing.trim_end().trim_end_matches(')').to_string()
         } else {
             if component_data.contains("(symbol") {
@@ -132,16 +204,19 @@ impl LibraryManager {
         }
         content.push('\n');
 
-        fs::write(lib_path, content)
-            .map_err(KicadError::Io)?;
+        fs::write(lib_path, content).map_err(KicadError::Io)?;
 
         Ok(())
     }
 
     /// Internal update component (assumes lock is held)
-    fn update_component_internal(&self, lib_path: &Path, component_name: &str, new_data: &str) -> Result<()> {
-        let content = fs::read_to_string(lib_path)
-            .map_err(KicadError::Io)?;
+    fn update_component_internal(
+        &self,
+        lib_path: &Path,
+        component_name: &str,
+        new_data: &str,
+    ) -> Result<()> {
+        let content = fs::read_to_string(lib_path).map_err(KicadError::Io)?;
 
         // Try v6 format: find symbol block by matching parentheses
         let search = format!(r#"(symbol "{}""#, component_name);
@@ -177,8 +252,7 @@ impl LibraryManager {
                 new_content.push('\n');
                 new_content.push_str(new_data);
                 new_content.push_str(&content[block_end..]);
-                fs::write(lib_path, &new_content)
-                    .map_err(KicadError::Io)?;
+                fs::write(lib_path, &new_content).map_err(KicadError::Io)?;
                 return Ok(());
             }
         }
@@ -189,18 +263,24 @@ impl LibraryManager {
             if let Some(end_offset) = content[start..].find("ENDDEF") {
                 let block_end = start + end_offset + "ENDDEF".len();
                 // Skip trailing newline
-                let block_end = if content[block_end..].starts_with('\n') { block_end + 1 } else { block_end };
+                let block_end = if content[block_end..].starts_with('\n') {
+                    block_end + 1
+                } else {
+                    block_end
+                };
                 let mut new_content = String::with_capacity(content.len());
                 new_content.push_str(&content[..start]);
                 new_content.push_str(new_data);
                 new_content.push_str(&content[block_end..]);
-                fs::write(lib_path, &new_content)
-                    .map_err(KicadError::Io)?;
+                fs::write(lib_path, &new_content).map_err(KicadError::Io)?;
                 return Ok(());
             }
         }
 
-        Err(KicadError::SymbolExport(format!("Component {} not found in library", component_name)).into())
+        Err(
+            KicadError::SymbolExport(format!("Component {} not found in library", component_name))
+                .into(),
+        )
     }
 
     /// Add a component to the library file
@@ -210,8 +290,7 @@ impl LibraryManager {
 
         let mut content = if lib_path.exists() {
             // Read existing file and remove the closing parenthesis
-            let existing = fs::read_to_string(lib_path)
-                .map_err(KicadError::Io)?;
+            let existing = fs::read_to_string(lib_path).map_err(KicadError::Io)?;
             // Remove trailing ')' and whitespace
             existing.trim_end().trim_end_matches(')').to_string()
         } else {
@@ -236,19 +315,22 @@ impl LibraryManager {
         }
         content.push('\n');
 
-        fs::write(lib_path, content)
-            .map_err(KicadError::Io)?;
+        fs::write(lib_path, content).map_err(KicadError::Io)?;
 
         Ok(())
     }
 
     /// Update an existing component in the library file
-    pub fn update_component(&self, lib_path: &Path, component_name: &str, new_data: &str) -> Result<()> {
+    pub fn update_component(
+        &self,
+        lib_path: &Path,
+        component_name: &str,
+        new_data: &str,
+    ) -> Result<()> {
         // Lock to prevent concurrent writes to the same symbol library file
         let _lock = SYMBOL_WRITE_LOCK.lock().unwrap();
 
-        let content = fs::read_to_string(lib_path)
-            .map_err(KicadError::Io)?;
+        let content = fs::read_to_string(lib_path).map_err(KicadError::Io)?;
 
         // Try v6 format: find symbol block by matching parentheses
         let search = format!(r#"(symbol "{}""#, component_name);
@@ -274,8 +356,7 @@ impl LibraryManager {
                 new_content.push_str(&content[..block_start]);
                 new_content.push_str(new_data);
                 new_content.push_str(&content[block_end..]);
-                fs::write(lib_path, &new_content)
-                    .map_err(KicadError::Io)?;
+                fs::write(lib_path, &new_content).map_err(KicadError::Io)?;
                 return Ok(());
             }
         }
@@ -285,22 +366,32 @@ impl LibraryManager {
         if let Some(start) = content.find(&v5_start) {
             if let Some(end_offset) = content[start..].find("ENDDEF") {
                 let block_end = start + end_offset + "ENDDEF".len();
-                let block_end = if content[block_end..].starts_with('\n') { block_end + 1 } else { block_end };
+                let block_end = if content[block_end..].starts_with('\n') {
+                    block_end + 1
+                } else {
+                    block_end
+                };
                 let mut new_content = String::with_capacity(content.len());
                 new_content.push_str(&content[..start]);
                 new_content.push_str(new_data);
                 new_content.push_str(&content[block_end..]);
-                fs::write(lib_path, &new_content)
-                    .map_err(KicadError::Io)?;
+                fs::write(lib_path, &new_content).map_err(KicadError::Io)?;
                 return Ok(());
             }
         }
 
-        Err(KicadError::SymbolExport(format!("Component {} not found in library", component_name)).into())
+        Err(
+            KicadError::SymbolExport(format!("Component {} not found in library", component_name))
+                .into(),
+        )
     }
 
     /// Atomic write: write to temp file with buffered I/O, then rename
-    fn atomic_write(path: &Path, data: &[u8], buf_size: usize) -> std::result::Result<(), std::io::Error> {
+    fn atomic_write(
+        path: &Path,
+        data: &[u8],
+        buf_size: usize,
+    ) -> std::result::Result<(), std::io::Error> {
         let tmp_path = path.with_extension("tmp");
         {
             let file = fs::File::create(&tmp_path)?;
@@ -312,31 +403,48 @@ impl LibraryManager {
         Ok(())
     }
 
+    pub fn get_footprint_path(&self, footprint_name: &str) -> PathBuf {
+        self.footprint_lib_dir
+            .join(format!("{}.kicad_mod", footprint_name))
+    }
+
     /// Write a footprint file
     pub fn write_footprint(&self, footprint_name: &str, data: &str) -> Result<PathBuf> {
-        let pretty_dir = self.output_path.join(format!("{}.pretty", self.lib_name));
-        let footprint_path = pretty_dir.join(format!("{}.kicad_mod", footprint_name));
-
-        Self::atomic_write(&footprint_path, data.as_bytes(), 32 * 1024)
-            .map_err(KicadError::Io)?;
-
-        log::info!("Wrote footprint: {}", footprint_path.display());
+        let (footprint_path, _) = self.write_footprint_if_needed(footprint_name, data, true)?;
         Ok(footprint_path)
     }
 
-    /// Write 3D model files
-    pub fn write_3d_model(&self, model_name: &str, wrl_data: &str, step_data: &[u8]) -> Result<(PathBuf, PathBuf)> {
-        let shapes_dir = self.output_path.join(format!("{}.3dshapes", self.lib_name));
+    pub fn write_footprint_if_needed(
+        &self,
+        footprint_name: &str,
+        data: &str,
+        overwrite: bool,
+    ) -> Result<(PathBuf, FileWriteStatus)> {
+        let footprint_path = self.get_footprint_path(footprint_name);
+        if footprint_path.exists() && !overwrite {
+            return Ok((footprint_path, FileWriteStatus::Skipped));
+        }
 
-        let wrl_path = shapes_dir.join(format!("{}.wrl", model_name));
-        Self::atomic_write(&wrl_path, wrl_data.as_bytes(), 256 * 1024)
-            .map_err(KicadError::Io)?;
+        Self::atomic_write(&footprint_path, data.as_bytes(), 32 * 1024).map_err(KicadError::Io)?;
+
+        log::info!("Wrote footprint: {}", footprint_path.display());
+        Ok((footprint_path, FileWriteStatus::Written))
+    }
+
+    /// Write 3D model files
+    pub fn write_3d_model(
+        &self,
+        model_name: &str,
+        wrl_data: &str,
+        step_data: &[u8],
+    ) -> Result<(PathBuf, PathBuf)> {
+        let wrl_path = self.model_lib_dir.join(format!("{}.wrl", model_name));
+        Self::atomic_write(&wrl_path, wrl_data.as_bytes(), 256 * 1024).map_err(KicadError::Io)?;
         log::info!("Wrote VRML model: {}", wrl_path.display());
 
-        let step_path = shapes_dir.join(format!("{}.step", model_name));
+        let step_path = self.model_lib_dir.join(format!("{}.step", model_name));
         if !step_data.is_empty() {
-            Self::atomic_write(&step_path, step_data, 256 * 1024)
-                .map_err(KicadError::Io)?;
+            Self::atomic_write(&step_path, step_data, 256 * 1024).map_err(KicadError::Io)?;
             log::info!("Wrote STEP model: {}", step_path.display());
         }
 
@@ -345,21 +453,32 @@ impl LibraryManager {
 
     /// Write only VRML model (when STEP is not available)
     pub fn write_wrl_model(&self, model_name: &str, wrl_data: &str) -> Result<PathBuf> {
-        let wrl_path = self.get_wrl_path(model_name);
+        let (wrl_path, _) = self.write_wrl_model_if_needed(model_name, wrl_data, true)?;
+        Ok(wrl_path)
+    }
 
-        Self::atomic_write(&wrl_path, wrl_data.as_bytes(), 256 * 1024)
-            .map_err(KicadError::Io)?;
+    pub fn write_wrl_model_if_needed(
+        &self,
+        model_name: &str,
+        wrl_data: &str,
+        overwrite: bool,
+    ) -> Result<(PathBuf, FileWriteStatus)> {
+        let wrl_path = self.get_wrl_path(model_name);
+        if wrl_path.exists() && !overwrite {
+            return Ok((wrl_path, FileWriteStatus::Skipped));
+        }
+
+        Self::atomic_write(&wrl_path, wrl_data.as_bytes(), 256 * 1024).map_err(KicadError::Io)?;
 
         log::info!("Wrote VRML model: {}", wrl_path.display());
-        Ok(wrl_path)
+        Ok((wrl_path, FileWriteStatus::Written))
     }
 
     /// Write only STEP model
     pub fn write_step_model(&self, model_name: &str, step_data: &[u8]) -> Result<PathBuf> {
         let step_path = self.get_step_path(model_name);
 
-        Self::atomic_write(&step_path, step_data, 256 * 1024)
-            .map_err(KicadError::Io)?;
+        Self::atomic_write(&step_path, step_data, 256 * 1024).map_err(KicadError::Io)?;
 
         log::info!("Wrote STEP model: {}", step_path.display());
         Ok(step_path)
@@ -367,20 +486,204 @@ impl LibraryManager {
 
     /// Get the path for a WRL model file
     pub fn get_wrl_path(&self, model_name: &str) -> PathBuf {
-        self.output_path.join(format!("{}.3dshapes", self.lib_name)).join(format!("{}.wrl", model_name))
+        self.model_lib_dir.join(format!("{}.wrl", model_name))
     }
 
     /// Get the path for a STEP model file
     pub fn get_step_path(&self, model_name: &str) -> PathBuf {
-        self.output_path.join(format!("{}.3dshapes", self.lib_name)).join(format!("{}.step", model_name))
+        self.model_lib_dir.join(format!("{}.step", model_name))
     }
 
     /// Get the symbol library path
     pub fn get_symbol_lib_path(&self, v5: bool) -> PathBuf {
-        if v5 {
+        if let Some(path) = &self.symbol_lib_override {
+            path.clone()
+        } else if v5 {
             self.output_path.join(format!("{}.lib", self.lib_name))
         } else {
-            self.output_path.join(format!("{}.kicad_sym", self.lib_name))
+            self.output_path
+                .join(format!("{}.kicad_sym", self.lib_name))
         }
+    }
+
+    fn library_name_from_path(path: &Path, suffix: &str) -> Result<String> {
+        let name = Self::path_name(path)?;
+        Ok(Self::strip_required_suffix(&name, suffix)?.to_string())
+    }
+
+    fn path_name(path: &Path) -> Result<String> {
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .map(|name| name.to_string())
+            .ok_or_else(|| AppError::Other(format!("Invalid library path: {}", path.display())))
+    }
+
+    fn strip_required_suffix<'a>(name: &'a str, suffix: &str) -> Result<&'a str> {
+        name.strip_suffix(suffix).ok_or_else(|| {
+            AppError::Other(format!("Library target must end with {}: {}", suffix, name))
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_dir(name: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "nlbn-{}-{}-{}",
+            name,
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ))
+    }
+
+    #[test]
+    fn resolves_default_library_targets_with_custom_lib_name() {
+        let cli = Cli::try_parse_from([
+            "nlbn",
+            "--lcsc-id",
+            "C2040",
+            "--full",
+            "--output",
+            "out",
+            "--lib-name",
+            "custom",
+        ])
+        .unwrap();
+        cli.validate().unwrap();
+
+        let manager = LibraryManager::from_cli(&cli).unwrap();
+        assert_eq!(
+            manager.get_symbol_lib_path(false),
+            PathBuf::from("out").join("custom.kicad_sym")
+        );
+        assert_eq!(manager.footprint_lib_name(), "custom");
+        assert_eq!(manager.model_lib_name(), "custom");
+        assert_eq!(manager.model_dir_name(), "custom.3dshapes");
+    }
+
+    #[test]
+    fn resolves_explicit_library_targets() {
+        let cli = Cli::try_parse_from([
+            "nlbn",
+            "--lcsc-id",
+            "C2040",
+            "--full",
+            "--symbol-lib",
+            "libs/custom.kicad_sym",
+            "--footprint-lib",
+            "pcb/board.pretty",
+            "--model-lib",
+            "assets/parts.3dshapes",
+        ])
+        .unwrap();
+        cli.validate().unwrap();
+
+        let manager = LibraryManager::from_cli(&cli).unwrap();
+        assert_eq!(
+            manager.get_symbol_lib_path(false),
+            PathBuf::from("libs/custom.kicad_sym")
+        );
+        assert_eq!(manager.footprint_lib_name(), "board");
+        assert_eq!(manager.model_lib_name(), "parts");
+        assert_eq!(manager.model_dir_name(), "parts.3dshapes");
+    }
+
+    #[test]
+    fn creates_explicit_targets_and_appends_symbol() {
+        let root = temp_dir("existing-libs");
+        let symbol_lib = root.join("symbols").join("custom.kicad_sym");
+        let footprint_lib = root.join("footprints").join("board.pretty");
+        let model_lib = root.join("models").join("parts.3dshapes");
+
+        let cli = Cli::try_parse_from([
+            "nlbn",
+            "--lcsc-id",
+            "C2040",
+            "--symbol",
+            "--symbol-lib",
+            symbol_lib.to_str().unwrap(),
+            "--footprint-lib",
+            footprint_lib.to_str().unwrap(),
+            "--model-lib",
+            model_lib.to_str().unwrap(),
+        ])
+        .unwrap();
+        cli.validate().unwrap();
+
+        let manager = LibraryManager::from_cli(&cli).unwrap();
+        manager.create_directories().unwrap();
+
+        assert!(symbol_lib.parent().unwrap().exists());
+        assert!(footprint_lib.is_dir());
+        assert!(model_lib.is_dir());
+
+        manager
+            .add_or_update_component(
+                &manager.get_symbol_lib_path(false),
+                "Part_C1",
+                r#"  (symbol "Part_C1")"#,
+                false,
+            )
+            .unwrap();
+        manager
+            .add_or_update_component(
+                &manager.get_symbol_lib_path(false),
+                "Part_C2",
+                r#"  (symbol "Part_C2")"#,
+                false,
+            )
+            .unwrap();
+
+        let content = fs::read_to_string(&symbol_lib).unwrap();
+        assert!(content.contains(r#"(symbol "Part_C1")"#));
+        assert!(content.contains(r#"(symbol "Part_C2")"#));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn skips_existing_symbol_without_overwrite() {
+        let root = temp_dir("symbol-skip");
+        let manager = LibraryManager::new(&root);
+        manager.create_directories().unwrap();
+        let lib_path = manager.get_symbol_lib_path(false);
+
+        let first = manager
+            .add_or_update_component(&lib_path, "Part_C1", r#"  (symbol "Part_C1")"#, false)
+            .unwrap();
+        let second = manager
+            .add_or_update_component(&lib_path, "Part_C1", r#"  (symbol "Part_C1_new")"#, false)
+            .unwrap();
+
+        assert_eq!(first, SymbolWriteStatus::Added);
+        assert_eq!(second, SymbolWriteStatus::Skipped);
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn skips_existing_footprint_without_overwrite() {
+        let root = temp_dir("footprint-skip");
+        let manager = LibraryManager::new(&root);
+        manager.create_directories().unwrap();
+
+        let first = manager
+            .write_footprint_if_needed("Part_C1", "(footprint \"Part_C1\")", false)
+            .unwrap();
+        let second = manager
+            .write_footprint_if_needed("Part_C1", "(footprint \"Part_C1_new\")", false)
+            .unwrap();
+
+        assert_eq!(first.1, FileWriteStatus::Written);
+        assert_eq!(second.1, FileWriteStatus::Skipped);
+
+        let _ = fs::remove_dir_all(root);
     }
 }

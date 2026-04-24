@@ -1,10 +1,10 @@
-use crate::converter::{angle_to_ki, sanitize_name, Converter};
+use crate::cli::Cli;
+use crate::converter::{Converter, angle_to_ki, sanitize_name};
+use crate::easyeda::svg_parser::{SvgCommand, parse_svg_path};
 use crate::easyeda::{ComponentData, FootprintImporter};
-use crate::easyeda::svg_parser::{parse_svg_path, SvgCommand};
 use crate::error::Result;
 use crate::kicad;
-use crate::library::LibraryManager;
-use crate::cli::Cli;
+use crate::library::{FileWriteStatus, LibraryManager};
 
 pub fn convert_footprint(
     args: &Cli,
@@ -90,39 +90,45 @@ pub fn convert_footprint(
         let adjusted_y_mm = converter.px_to_mm(adjusted_y);
 
         // Handle polygon pads
-        let (size_x, size_y, rotation, polygon) = if ee_pad.shape == "POLYGON" && !ee_pad.points.is_empty() {
-            // Parse points: space-separated x y coordinates
-            let coords: Vec<f64> = ee_pad.points
-                .split_whitespace()
-                .filter_map(|s| s.parse::<f64>().ok())
-                .collect();
+        let (size_x, size_y, rotation, polygon) =
+            if ee_pad.shape == "POLYGON" && !ee_pad.points.is_empty() {
+                // Parse points: space-separated x y coordinates
+                let coords: Vec<f64> = ee_pad
+                    .points
+                    .split_whitespace()
+                    .filter_map(|s| s.parse::<f64>().ok())
+                    .collect();
 
-            if coords.len() >= 4 {  // At least 2 points (x,y pairs)
-                // Convert coordinates to mm and make relative to pad position
-                let mut poly_str = String::from("\n\t\t(primitives \n\t\t\t(gr_poly \n\t\t\t\t(pts");
+                if coords.len() >= 4 {
+                    // At least 2 points (x,y pairs)
+                    // Convert coordinates to mm and make relative to pad position
+                    let mut poly_str =
+                        String::from("\n\t\t(primitives \n\t\t\t(gr_poly \n\t\t\t\t(pts");
 
-                for i in (0..coords.len()).step_by(2) {
-                    if i + 1 < coords.len() {
-                        let abs_x_mm = converter.px_to_mm(coords[i] - component_data.package_bbox_x);
-                        let abs_y_mm = converter.px_to_mm(coords[i + 1] - component_data.package_bbox_y);
-                        let rel_x = abs_x_mm - adjusted_x_mm;
-                        let rel_y = abs_y_mm - adjusted_y_mm;
-                        poly_str.push_str(&format!(" (xy {:.2} {:.2})", rel_x, rel_y));
+                    for i in (0..coords.len()).step_by(2) {
+                        if i + 1 < coords.len() {
+                            let abs_x_mm =
+                                converter.px_to_mm(coords[i] - component_data.package_bbox_x);
+                            let abs_y_mm =
+                                converter.px_to_mm(coords[i + 1] - component_data.package_bbox_y);
+                            let rel_x = abs_x_mm - adjusted_x_mm;
+                            let rel_y = abs_y_mm - adjusted_y_mm;
+                            poly_str.push_str(&format!(" (xy {:.2} {:.2})", rel_x, rel_y));
+                        }
                     }
+
+                    poly_str.push_str("\n\t\t\t\t) \n\t\t\t\t(width 0.1) \n\t\t\t)\n\t\t)\n\t");
+
+                    // Set minimal pad size (enforced minimum 0.01) and force orientation to 0
+                    (0.01, 0.01, 0.0, Some(poly_str))
+                } else {
+                    let rot = angle_to_ki(ee_pad.rotation);
+                    (ee_pad.width.max(0.01), ee_pad.height.max(0.01), rot, None)
                 }
-
-                poly_str.push_str("\n\t\t\t\t) \n\t\t\t\t(width 0.1) \n\t\t\t)\n\t\t)\n\t");
-
-                // Set minimal pad size (enforced minimum 0.01) and force orientation to 0
-                (0.01, 0.01, 0.0, Some(poly_str))
             } else {
                 let rot = angle_to_ki(ee_pad.rotation);
                 (ee_pad.width.max(0.01), ee_pad.height.max(0.01), rot, None)
-            }
-        } else {
-            let rot = angle_to_ki(ee_pad.rotation);
-            (ee_pad.width.max(0.01), ee_pad.height.max(0.01), rot, None)
-        };
+            };
 
         ki_footprint.pads.push(kicad::KiPad {
             number: ee_pad.number.clone(),
@@ -144,7 +150,8 @@ pub fn convert_footprint(
     // We need to convert it to multiple line segments
     for ee_track in &ee_footprint.tracks {
         // Parse points string into coordinates
-        let coords: Vec<f64> = ee_track.points
+        let coords: Vec<f64> = ee_track
+            .points
             .split_whitespace()
             .filter_map(|s| s.parse::<f64>().ok())
             .collect();
@@ -200,7 +207,7 @@ pub fn convert_footprint(
         let diameter = ee_hole.radius * 2.0;
 
         ki_footprint.pads.push(kicad::KiPad {
-            number: String::new(),  // Empty number for non-plated holes
+            number: String::new(), // Empty number for non-plated holes
             pad_type: kicad::PadType::NpThroughHole,
             shape: kicad::PadShape::Circle,
             pos_x: adjusted_x,
@@ -229,7 +236,7 @@ pub fn convert_footprint(
         let drill_diameter = ee_via.radius * 2.0;
 
         ki_footprint.pads.push(kicad::KiPad {
-            number: String::new(),  // Vias typically don't have pad numbers
+            number: String::new(), // Vias typically don't have pad numbers
             pad_type: kicad::PadType::ThroughHole,
             shape: kicad::PadShape::Circle,
             pos_x: adjusted_x,
@@ -253,7 +260,11 @@ pub fn convert_footprint(
         let commands = match parse_svg_path(&ee_arc.path) {
             Ok(cmds) => cmds,
             Err(e) => {
-                log::warn!("Skipping arc with invalid SVG path: {} ({})", ee_arc.path, e);
+                log::warn!(
+                    "Skipping arc with invalid SVG path: {} ({})",
+                    ee_arc.path,
+                    e
+                );
                 continue;
             }
         };
@@ -264,7 +275,15 @@ pub fn convert_footprint(
                 SvgCommand::MoveTo { x, y } => {
                     current_pos = (*x, *y);
                 }
-                SvgCommand::Arc { rx, ry, angle, large_arc, sweep, x, y } => {
+                SvgCommand::Arc {
+                    rx,
+                    ry,
+                    angle,
+                    large_arc,
+                    sweep,
+                    x,
+                    y,
+                } => {
                     let start_x = current_pos.0;
                     let start_y = current_pos.1;
                     let end_x = *x;
@@ -400,11 +419,15 @@ pub fn convert_footprint(
             // Default to project-relative paths (KIPRJMOD) for easier setup
             // Use --project-relative flag to force global paths if needed
             // Prefer STEP format as it's more widely supported
-            let lib_name = lib_manager.lib_name();
+            let model_lib_name = lib_manager.model_lib_name();
+            let model_dir_name = lib_manager.model_dir_name();
             let model_path = if args.project_relative {
-                format!("${{KIPRJMOD}}/{}.3dshapes/{}.step", lib_name, model_name)
+                format!("${{KIPRJMOD}}/{}/{}.step", model_dir_name, model_name)
             } else {
-                format!("${{{}}}/{}.3dshapes/{}.step", lib_name, lib_name, model_name)
+                format!(
+                    "${{{}}}/{}/{}.step",
+                    model_lib_name, model_dir_name, model_name
+                )
             };
 
             ki_footprint.model_3d = Some(kicad::Ki3dModel {
@@ -419,9 +442,20 @@ pub fn convert_footprint(
     // Export footprint
     let exporter = kicad::FootprintExporter::new();
     let footprint_data = exporter.export(&ki_footprint)?;
-    lib_manager.write_footprint(&ki_footprint.name, &footprint_data)?;
+    let (_, status) = lib_manager.write_footprint_if_needed(
+        &ki_footprint.name,
+        &footprint_data,
+        args.overwrite,
+    )?;
 
-    println!("\u{2713} Footprint converted: {}", ki_footprint.name);
+    match status {
+        FileWriteStatus::Written => {
+            println!("\u{2713} Footprint converted: {}", ki_footprint.name);
+        }
+        FileWriteStatus::Skipped => {
+            println!("Skipped existing footprint: {}", ki_footprint.name);
+        }
+    }
 
     Ok(())
 }

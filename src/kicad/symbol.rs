@@ -27,7 +27,7 @@ impl PinType {
             "C" => PinType::OpenCollector,
             "E" => PinType::OpenEmitter,
             "N" => PinType::NoConnect,
-            _ => PinType::Passive,  // Default to Passive
+            _ => PinType::Passive, // Default to Passive
         }
     }
 

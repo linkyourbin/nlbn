@@ -1,6 +1,6 @@
-use reqwest::Client;
+use crate::easyeda::models::{ApiResponse, ComponentData, Model3dInfo};
 use crate::error::{EasyedaError, Result};
-use crate::easyeda::models::{ComponentData, ApiResponse, Model3dInfo};
+use reqwest::Client;
 use std::path::Path;
 use tokio::io::AsyncWriteExt;
 
@@ -30,7 +30,8 @@ impl EasyedaApi {
 
         log::info!("Fetching component data for {}", lcsc_id);
 
-        let response = self.client
+        let response = self
+            .client
             .get(&url)
             .send()
             .await
@@ -40,7 +41,8 @@ impl EasyedaApi {
             return Err(EasyedaError::ComponentNotFound(lcsc_id.to_string()).into());
         }
 
-        let api_response: ApiResponse = response.json()
+        let api_response: ApiResponse = response
+            .json()
             .await
             .map_err(|e| EasyedaError::InvalidData(format!("Failed to parse JSON: {}", e)))?;
 
@@ -48,59 +50,73 @@ impl EasyedaApi {
             return Err(EasyedaError::ComponentNotFound(lcsc_id.to_string()).into());
         }
 
-        let result = api_response.result
+        let result = api_response
+            .result
             .ok_or_else(|| EasyedaError::InvalidData("Missing result field".to_string()))?;
 
-        let data_str_obj = result.data_str.as_ref()
+        let data_str_obj = result
+            .data_str
+            .as_ref()
             .ok_or_else(|| EasyedaError::InvalidData("Missing dataStr field".to_string()))?;
 
         log::debug!("data_str_obj type: {:?}", data_str_obj);
 
-        let bbox_x = data_str_obj.get("head")
+        let bbox_x = data_str_obj
+            .get("head")
             .and_then(|h| h.get("x"))
             .and_then(|v| v.as_f64())
             .unwrap_or(0.0);
-        let bbox_y = data_str_obj.get("head")
+        let bbox_y = data_str_obj
+            .get("head")
             .and_then(|h| h.get("y"))
             .and_then(|v| v.as_f64())
             .unwrap_or(0.0);
 
         log::debug!("Extracted bbox: x={}, y={}", bbox_x, bbox_y);
 
-        let data_str = if let Some(shape_array) = data_str_obj.get("shape").and_then(|v| v.as_array()) {
-            log::debug!("Found shape array with {} elements", shape_array.len());
-            shape_array.iter()
-                .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                .collect()
-        } else {
-            log::warn!("data_str_obj doesn't have shape array");
-            vec![]
-        };
+        let data_str =
+            if let Some(shape_array) = data_str_obj.get("shape").and_then(|v| v.as_array()) {
+                log::debug!("Found shape array with {} elements", shape_array.len());
+                shape_array
+                    .iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect()
+            } else {
+                log::warn!("data_str_obj doesn't have shape array");
+                vec![]
+            };
 
         log::debug!("Final data_str has {} shapes", data_str.len());
 
-        let title = result.title
+        let title = result
+            .title
             .ok_or_else(|| EasyedaError::InvalidData("Missing title field".to_string()))?;
 
-        let manufacturer = data_str_obj.get("head")
+        let manufacturer = data_str_obj
+            .get("head")
             .and_then(|h| h.get("c_para"))
             .and_then(|cp| cp.get("BOM_Manufacturer"))
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
 
-        let package = data_str_obj.get("head")
+        let package = data_str_obj
+            .get("head")
             .and_then(|h| h.get("c_para"))
             .and_then(|cp| cp.get("package"))
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
 
-        let szlcsc_id = result.lcsc.as_ref()
+        let szlcsc_id = result
+            .lcsc
+            .as_ref()
             .and_then(|lcsc| lcsc.get("id"))
             .and_then(|v| v.as_u64());
 
-        let datasheet = result.lcsc.as_ref()
+        let datasheet = result
+            .lcsc
+            .as_ref()
             .and_then(|lcsc| lcsc.get("url"))
             .and_then(|v| v.as_str())
             .map(|s| s.to_string())
@@ -112,7 +128,8 @@ impl EasyedaApi {
                 }
             });
 
-        let jlc_id = data_str_obj.get("head")
+        let jlc_id = data_str_obj
+            .get("head")
             .and_then(|h| h.get("c_para"))
             .and_then(|cp| cp.get("BOM_JLCPCB Part Class"))
             .and_then(|v| v.as_str())
@@ -124,23 +141,38 @@ impl EasyedaApi {
             Some(ref d) if !d.is_empty() => d.clone(),
             _ => {
                 let mut parts = Vec::new();
-                if !manufacturer.is_empty() { parts.push(manufacturer.clone()); }
-                if !title.is_empty() { parts.push(title.clone()); }
-                if !package.is_empty() { parts.push(package.clone()); }
+                if !manufacturer.is_empty() {
+                    parts.push(manufacturer.clone());
+                }
+                if !title.is_empty() {
+                    parts.push(title.clone());
+                }
+                if !package.is_empty() {
+                    parts.push(package.clone());
+                }
                 parts.join(" ")
             }
         };
 
-        log::debug!("Extracted metadata: manufacturer={}, datasheet={}, jlc_id={}, description={}",
-                   manufacturer, datasheet, jlc_id, description);
+        log::debug!(
+            "Extracted metadata: manufacturer={}, datasheet={}, jlc_id={}, description={}",
+            manufacturer,
+            datasheet,
+            jlc_id,
+            description
+        );
 
-        let (package_detail, package_bbox_x, package_bbox_y, model_3d) = if let Some(pkg) = result.package_detail {
-            let pkg_bbox_x = pkg.get("dataStr")
+        let (package_detail, package_bbox_x, package_bbox_y, model_3d) = if let Some(pkg) =
+            result.package_detail
+        {
+            let pkg_bbox_x = pkg
+                .get("dataStr")
                 .and_then(|ds| ds.get("head"))
                 .and_then(|h| h.get("x"))
                 .and_then(|v| v.as_f64())
                 .unwrap_or(0.0);
-            let pkg_bbox_y = pkg.get("dataStr")
+            let pkg_bbox_y = pkg
+                .get("dataStr")
                 .and_then(|ds| ds.get("head"))
                 .and_then(|h| h.get("y"))
                 .and_then(|v| v.as_f64())
@@ -150,7 +182,8 @@ impl EasyedaApi {
 
             let shapes = if let Some(pkg_data_str) = pkg.get("dataStr") {
                 if let Some(shape_array) = pkg_data_str.get("shape").and_then(|v| v.as_array()) {
-                    shape_array.iter()
+                    shape_array
+                        .iter()
                         .filter_map(|v| v.as_str().map(|s| s.to_string()))
                         .collect()
                 } else {
@@ -198,10 +231,12 @@ impl EasyedaApi {
                         if let Some(attrs) = svg_data.get("attrs") {
                             if let Some(c_etype) = attrs.get("c_etype").and_then(|v| v.as_str()) {
                                 if c_etype == "outline3D" {
-                                    let uuid = attrs.get("uuid")
+                                    let uuid = attrs
+                                        .get("uuid")
                                         .and_then(|v| v.as_str())
                                         .map(|s| s.to_string());
-                                    let title = attrs.get("title")
+                                    let title = attrs
+                                        .get("title")
                                         .and_then(|v| v.as_str())
                                         .map(|s| s.to_string());
 
@@ -224,31 +259,59 @@ impl EasyedaApi {
     }
 
     pub async fn download_3d_step(&self, uuid: &str) -> Result<Vec<u8>> {
-        let url = format!("https://modules.easyeda.com/qAxj6KHrDKw4blvCG8QJPs7Y/{}", uuid);
+        let url = format!(
+            "https://modules.easyeda.com/qAxj6KHrDKw4blvCG8QJPs7Y/{}",
+            uuid
+        );
         self.download_with_retry(&url, "STEP", uuid).await
     }
 
     /// Stream download directly to a file with atomic write (temp file + rename)
-    pub async fn download_3d_to_file(&self, uuid: &str, model_type: &str, dest: &Path) -> Result<()> {
+    pub async fn download_3d_to_file(
+        &self,
+        uuid: &str,
+        model_type: &str,
+        dest: &Path,
+    ) -> Result<()> {
         let url = match model_type {
             "OBJ" => format!("https://modules.easyeda.com/3dmodel/{}", uuid),
-            "STEP" => format!("https://modules.easyeda.com/qAxj6KHrDKw4blvCG8QJPs7Y/{}", uuid),
-            _ => return Err(EasyedaError::InvalidData(format!("Unknown model type: {}", model_type)).into()),
+            "STEP" => format!(
+                "https://modules.easyeda.com/qAxj6KHrDKw4blvCG8QJPs7Y/{}",
+                uuid
+            ),
+            _ => {
+                return Err(EasyedaError::InvalidData(format!(
+                    "Unknown model type: {}",
+                    model_type
+                ))
+                .into());
+            }
         };
 
         const MAX_RETRIES: u32 = 3;
         let tmp_path = dest.with_extension("tmp");
 
         for attempt in 1..=MAX_RETRIES {
-            log::info!("Downloading 3D {} model: {}{}", model_type, uuid,
-                if attempt > 1 { format!(" (retry {}/{})", attempt, MAX_RETRIES) } else { String::new() });
+            log::info!(
+                "Downloading 3D {} model: {}{}",
+                model_type,
+                uuid,
+                if attempt > 1 {
+                    format!(" (retry {}/{})", attempt, MAX_RETRIES)
+                } else {
+                    String::new()
+                }
+            );
 
             match self.client.get(&url).send().await {
                 Ok(response) => {
                     if !response.status().is_success() {
                         if attempt == MAX_RETRIES {
-                            return Err(EasyedaError::InvalidData(
-                                format!("Failed to download {}: {}", model_type, uuid)).into());
+                            return Err(EasyedaError::InvalidData(format!(
+                                "Failed to download {}: {}",
+                                model_type, uuid
+                            ))
+                            .into());
                         }
                         Self::backoff_delay(attempt).await;
                         continue;
@@ -257,8 +320,9 @@ impl EasyedaApi {
                     // Stream response body to temp file with buffered writer
                     let mut file = tokio::io::BufWriter::with_capacity(
                         256 * 1024, // 256 KB buffer for binary files
-                        tokio::fs::File::create(&tmp_path).await
-                            .map_err(|e| EasyedaError::InvalidData(format!("Failed to create temp file: {}", e)))?,
+                        tokio::fs::File::create(&tmp_path).await.map_err(|e| {
+                            EasyedaError::InvalidData(format!("Failed to create temp file: {}", e))
+                        })?,
                     );
 
                     let mut stream = response.bytes_stream();
@@ -269,7 +333,11 @@ impl EasyedaApi {
                                 if let Err(e) = file.write_all(&bytes).await {
                                     let _ = tokio::fs::remove_file(&tmp_path).await;
                                     if attempt == MAX_RETRIES {
-                                        return Err(EasyedaError::InvalidData(format!("Write error: {}", e)).into());
+                                        return Err(EasyedaError::InvalidData(format!(
+                                            "Write error: {}",
+                                            e
+                                        ))
+                                        .into());
                                     }
                                     break;
                                 }
@@ -286,12 +354,14 @@ impl EasyedaApi {
                         }
                     }
 
-                    file.flush().await
+                    file.flush()
+                        .await
                         .map_err(|e| EasyedaError::InvalidData(format!("Flush error: {}", e)))?;
                     drop(file);
 
                     // Atomic rename
-                    tokio::fs::rename(&tmp_path, dest).await
+                    tokio::fs::rename(&tmp_path, dest)
+                        .await
                         .map_err(|e| EasyedaError::InvalidData(format!("Rename error: {}", e)))?;
 
                     return Ok(());
@@ -314,19 +384,35 @@ impl EasyedaApi {
         tokio::time::sleep(delay).await;
     }
 
-    async fn download_with_retry(&self, url: &str, model_type: &str, uuid: &str) -> Result<Vec<u8>> {
+    async fn download_with_retry(
+        &self,
+        url: &str,
+        model_type: &str,
+        uuid: &str,
+    ) -> Result<Vec<u8>> {
         const MAX_RETRIES: u32 = 3;
 
         for attempt in 1..=MAX_RETRIES {
-            log::info!("Downloading 3D {} model: {}{}", model_type, uuid,
-                if attempt > 1 { format!(" (retry {}/{})", attempt, MAX_RETRIES) } else { String::new() });
+            log::info!(
+                "Downloading 3D {} model: {}{}",
+                model_type,
+                uuid,
+                if attempt > 1 {
+                    format!(" (retry {}/{})", attempt, MAX_RETRIES)
+                } else {
+                    String::new()
+                }
+            );
 
             match self.client.get(url).send().await {
                 Ok(response) => {
                     if !response.status().is_success() {
                         if attempt == MAX_RETRIES {
-                            return Err(EasyedaError::InvalidData(
-                                format!("Failed to download {}: {}", model_type, uuid)).into());
+                            return Err(EasyedaError::InvalidData(format!(
+                                "Failed to download {}: {}",
+                                model_type, uuid
+                            ))
+                            .into());
                         }
                         Self::backoff_delay(attempt).await;
                         continue;

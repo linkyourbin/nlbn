@@ -260,7 +260,7 @@ impl SymbolExporter {
 
     fn format_pin_v5(&self, pin: &KiPin) -> String {
         let x = self.converter.px_to_mil(pin.pos_x);
-        let y = self.converter.px_to_mil(pin.pos_y);  // Don't flip, already handled
+        let y = self.converter.px_to_mil(pin.pos_y); // Don't flip, already handled
         let length = self.converter.px_to_mil(pin.length);
 
         // X name number posx posy length orientation Snum Snom unit convert Etype [shape]
@@ -301,9 +301,9 @@ impl SymbolExporter {
 
     fn format_rectangle_v5(&self, rect: &KiRectangle) -> String {
         let x1 = self.converter.px_to_mil(rect.x1);
-        let y1 = self.converter.px_to_mil(rect.y1);  // Don't flip, already handled
+        let y1 = self.converter.px_to_mil(rect.y1); // Don't flip, already handled
         let x2 = self.converter.px_to_mil(rect.x2);
-        let y2 = self.converter.px_to_mil(rect.y2);  // Don't flip, already handled
+        let y2 = self.converter.px_to_mil(rect.y2); // Don't flip, already handled
 
         let fill = if rect.fill { "F" } else { "N" };
 
@@ -327,7 +327,7 @@ impl SymbolExporter {
 
     fn format_circle_v5(&self, circle: &KiCircle) -> String {
         let cx = self.converter.px_to_mil(circle.cx);
-        let cy = self.converter.px_to_mil(circle.cy);  // Don't flip, already handled
+        let cy = self.converter.px_to_mil(circle.cy); // Don't flip, already handled
         let radius = self.converter.px_to_mil(circle.radius);
 
         let fill = if circle.fill { "F" } else { "N" };
@@ -338,11 +338,11 @@ impl SymbolExporter {
 
     fn format_arc_v6(&self, arc: &KiArc) -> String {
         let start_x = self.converter.px_to_mm(arc.start_x);
-        let start_y = self.converter.px_to_mm(arc.start_y);  // Don't flip, already handled
+        let start_y = self.converter.px_to_mm(arc.start_y); // Don't flip, already handled
         let mid_x = self.converter.px_to_mm(arc.mid_x);
-        let mid_y = self.converter.px_to_mm(arc.mid_y);  // Don't flip, already handled
+        let mid_y = self.converter.px_to_mm(arc.mid_y); // Don't flip, already handled
         let end_x = self.converter.px_to_mm(arc.end_x);
-        let end_y = self.converter.px_to_mm(arc.end_y);  // Don't flip, already handled
+        let end_y = self.converter.px_to_mm(arc.end_y); // Don't flip, already handled
         let width = self.converter.px_to_mm(arc.stroke_width);
 
         format!(
@@ -356,7 +356,7 @@ impl SymbolExporter {
 
         for (x, y) in &polyline.points {
             let x = self.converter.px_to_mm(*x);
-            let y = self.converter.px_to_mm(*y);  // Don't flip, already handled
+            let y = self.converter.px_to_mm(*y); // Don't flip, already handled
             output.push_str(&format!("        (xy {:.4} {:.4})\n", x, y));
         }
 
@@ -364,7 +364,10 @@ impl SymbolExporter {
         let fill = if polyline.fill { "outline" } else { "none" };
 
         output.push_str("      )\n");
-        output.push_str(&format!("      (stroke (width {:.4}) (type default))\n", width));
+        output.push_str(&format!(
+            "      (stroke (width {:.4}) (type default))\n",
+            width
+        ));
         output.push_str(&format!("      (fill (type {}))\n", fill));
         output.push_str("    )\n");
 
@@ -377,7 +380,7 @@ impl SymbolExporter {
 
         for (x, y) in &polyline.points {
             let x = self.converter.px_to_mil(*x);
-            let y = self.converter.px_to_mil(*y);  // Don't flip, already handled
+            let y = self.converter.px_to_mil(*y); // Don't flip, already handled
             output.push_str(&format!(" {} {}", x, y));
         }
 

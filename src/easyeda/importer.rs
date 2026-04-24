@@ -1,5 +1,5 @@
-use crate::error::{EasyedaError, Result};
 use crate::easyeda::models::*;
+use crate::error::{EasyedaError, Result};
 
 pub struct SymbolImporter;
 
@@ -34,7 +34,11 @@ impl SymbolImporter {
 
             let designator = fields[0];
 
-            log::debug!("Shape designator: '{}', fields: {}", designator, fields.len());
+            log::debug!(
+                "Shape designator: '{}', fields: {}",
+                designator,
+                fields.len()
+            );
 
             match designator {
                 "P" => {
@@ -42,7 +46,12 @@ impl SymbolImporter {
                     // Pins contain multiple segments separated by ^^
                     log::debug!("Parsing pin: {}", shape);
                     if let Ok(pin) = Self::parse_pin(shape) {
-                        log::debug!("Successfully parsed pin: {} at ({}, {})", pin.number, pin.x, pin.y);
+                        log::debug!(
+                            "Successfully parsed pin: {} at ({}, {})",
+                            pin.number,
+                            pin.x,
+                            pin.y
+                        );
                         symbol.pins.push(pin);
                     } else {
                         log::warn!("Failed to parse pin from: {}", shape);
@@ -58,8 +67,13 @@ impl SymbolImporter {
                     // Circle: C~center_x~center_y~radius~stroke_color~stroke_width~stroke_style~fill_color~id~is_locked
                     log::debug!("Parsing circle with {} fields: {:?}", fields.len(), fields);
                     if let Ok(circle) = Self::parse_circle(&fields) {
-                        log::debug!("Successfully parsed circle at ({}, {}), radius {}, fill {}",
-                                   circle.cx, circle.cy, circle.radius, circle.fill);
+                        log::debug!(
+                            "Successfully parsed circle at ({}, {}), radius {}, fill {}",
+                            circle.cx,
+                            circle.cy,
+                            circle.radius,
+                            circle.fill
+                        );
                         symbol.circles.push(circle);
                     } else {
                         log::warn!("Failed to parse circle from: {}", shape);
@@ -69,8 +83,14 @@ impl SymbolImporter {
                     // Ellipse: E~center_x~center_y~radius_x~radius_y~stroke_color~stroke_width~stroke_style~fill_color~id~is_locked
                     log::debug!("Parsing ellipse with {} fields: {:?}", fields.len(), fields);
                     if let Ok(ellipse) = Self::parse_ellipse(&fields) {
-                        log::debug!("Successfully parsed ellipse at ({}, {}), rx {}, ry {}, fill {}",
-                                   ellipse.cx, ellipse.cy, ellipse.rx, ellipse.ry, ellipse.fill);
+                        log::debug!(
+                            "Successfully parsed ellipse at ({}, {}), rx {}, ry {}, fill {}",
+                            ellipse.cx,
+                            ellipse.cy,
+                            ellipse.rx,
+                            ellipse.ry,
+                            ellipse.fill
+                        );
                         symbol.ellipses.push(ellipse);
                     } else {
                         log::warn!("Failed to parse ellipse from: {}", shape);
@@ -147,8 +167,14 @@ impl SymbolImporter {
             symbol.prefix = "U".to_string();
         }
 
-        log::info!("Parsed symbol: {} pins, {} rectangles, {} circles, {} ellipses, {} polylines",
-                   symbol.pins.len(), symbol.rectangles.len(), symbol.circles.len(), symbol.ellipses.len(), symbol.polylines.len());
+        log::info!(
+            "Parsed symbol: {} pins, {} rectangles, {} circles, {} ellipses, {} polylines",
+            symbol.pins.len(),
+            symbol.rectangles.len(),
+            symbol.circles.len(),
+            symbol.ellipses.len(),
+            symbol.polylines.len()
+        );
 
         Ok(symbol)
     }
@@ -171,13 +197,19 @@ impl SymbolImporter {
         // Parse first segment (pin settings)
         let fields: Vec<&str> = segments[0].split('~').collect();
         if fields.len() < 7 {
-            return Err(EasyedaError::InvalidData(format!("Invalid pin data, only {} fields in segment 0", fields.len())).into());
+            return Err(EasyedaError::InvalidData(format!(
+                "Invalid pin data, only {} fields in segment 0",
+                fields.len()
+            ))
+            .into());
         }
 
         // Field indices: P~is_displayed~type~spice_pin_number~pos_x~pos_y~rotation~id~is_locked
-        let x = fields[4].parse::<f64>()
+        let x = fields[4]
+            .parse::<f64>()
             .map_err(|_| EasyedaError::InvalidData("Invalid pin X coordinate".to_string()))?;
-        let y = fields[5].parse::<f64>()
+        let y = fields[5]
+            .parse::<f64>()
             .map_err(|_| EasyedaError::InvalidData("Invalid pin Y coordinate".to_string()))?;
         let rotation = fields[6].parse::<i32>().unwrap_or(0);
 
@@ -218,20 +250,36 @@ impl SymbolImporter {
 
                 // Try 'h' first (horizontal)
                 if let Some(h_pos) = path.rfind('h') {
-                    let num_str = &path[h_pos+1..].trim();
+                    let num_str = &path[h_pos + 1..].trim();
                     let parsed_length = num_str.parse::<f64>().unwrap_or(100.0).abs();
-                    log::debug!("Pin {} ({}): path='{}', extracted length={}", number, name, path, parsed_length);
+                    log::debug!(
+                        "Pin {} ({}): path='{}', extracted length={}",
+                        number,
+                        name,
+                        path,
+                        parsed_length
+                    );
                     parsed_length
                 }
                 // Try 'v' (vertical)
                 else if let Some(v_pos) = path.rfind('v') {
-                    let num_str = &path[v_pos+1..].trim();
+                    let num_str = &path[v_pos + 1..].trim();
                     let parsed_length = num_str.parse::<f64>().unwrap_or(100.0).abs();
-                    log::debug!("Pin {} ({}): path='{}', extracted length={}", number, name, path, parsed_length);
+                    log::debug!(
+                        "Pin {} ({}): path='{}', extracted length={}",
+                        number,
+                        name,
+                        path,
+                        parsed_length
+                    );
                     parsed_length
-                }
-                else {
-                    log::debug!("Pin {} ({}): path='{}' has no 'h' or 'v', using default length=100", number, name, path);
+                } else {
+                    log::debug!(
+                        "Pin {} ({}): path='{}' has no 'h' or 'v', using default length=100",
+                        number,
+                        name,
+                        path
+                    );
                     100.0
                 }
             } else {
@@ -261,24 +309,35 @@ impl SymbolImporter {
             return Err(EasyedaError::InvalidData("Invalid rectangle data".to_string()).into());
         }
 
-        log::debug!("Parsing rectangle with {} fields: {:?}", fields.len(), fields);
+        log::debug!(
+            "Parsing rectangle with {} fields: {:?}",
+            fields.len(),
+            fields
+        );
 
         // R~pos_x~pos_y~rx~ry~width~height~stroke_color~stroke_width~stroke_style~fill_color~id~locked
-        let x = fields[1].parse::<f64>()
+        let x = fields[1]
+            .parse::<f64>()
             .map_err(|_| EasyedaError::InvalidData("Invalid rectangle X".to_string()))?;
-        let y = fields[2].parse::<f64>()
+        let y = fields[2]
+            .parse::<f64>()
             .map_err(|_| EasyedaError::InvalidData("Invalid rectangle Y".to_string()))?;
         // fields[3] and fields[4] are rx, ry (corner radius) - skip them
-        let width = fields[5].parse::<f64>()
+        let width = fields[5]
+            .parse::<f64>()
             .map_err(|_| EasyedaError::InvalidData("Invalid rectangle width".to_string()))?;
-        let height = fields[6].parse::<f64>()
+        let height = fields[6]
+            .parse::<f64>()
             .map_err(|_| EasyedaError::InvalidData("Invalid rectangle height".to_string()))?;
 
         // fill_color is at index 10
         let fill = fields.len() > 10 && !fields[10].is_empty() && fields[10] != "none";
 
-        log::debug!("Rectangle fill_color field[10] = '{}', fill = {}",
-            if fields.len() > 10 { fields[10] } else { "N/A" }, fill);
+        log::debug!(
+            "Rectangle fill_color field[10] = '{}', fill = {}",
+            if fields.len() > 10 { fields[10] } else { "N/A" },
+            fill
+        );
 
         Ok(EeRectangle {
             x,
@@ -297,18 +356,24 @@ impl SymbolImporter {
         }
 
         // C~center_x~center_y~radius~stroke_color~stroke_width~stroke_style~fill_color~id~is_locked
-        let cx = fields[1].parse::<f64>()
+        let cx = fields[1]
+            .parse::<f64>()
             .map_err(|_| EasyedaError::InvalidData("Invalid circle CX".to_string()))?;
-        let cy = fields[2].parse::<f64>()
+        let cy = fields[2]
+            .parse::<f64>()
             .map_err(|_| EasyedaError::InvalidData("Invalid circle CY".to_string()))?;
-        let radius = fields[3].parse::<f64>()
+        let radius = fields[3]
+            .parse::<f64>()
             .map_err(|_| EasyedaError::InvalidData("Invalid circle radius".to_string()))?;
 
         // fill_color is at index 7, check if it's not empty and not "none"
         let fill = fields.len() > 7 && !fields[7].is_empty() && fields[7] != "none";
 
-        log::debug!("Circle fill_color field[7] = '{}', fill = {}",
-            if fields.len() > 7 { fields[7] } else { "N/A" }, fill);
+        log::debug!(
+            "Circle fill_color field[7] = '{}', fill = {}",
+            if fields.len() > 7 { fields[7] } else { "N/A" },
+            fill
+        );
 
         Ok(EeCircle {
             cx,
@@ -326,20 +391,27 @@ impl SymbolImporter {
         }
 
         // E~center_x~center_y~radius_x~radius_y~stroke_color~stroke_width~stroke_style~fill_color~id~is_locked
-        let cx = fields[1].parse::<f64>()
+        let cx = fields[1]
+            .parse::<f64>()
             .map_err(|_| EasyedaError::InvalidData("Invalid ellipse CX".to_string()))?;
-        let cy = fields[2].parse::<f64>()
+        let cy = fields[2]
+            .parse::<f64>()
             .map_err(|_| EasyedaError::InvalidData("Invalid ellipse CY".to_string()))?;
-        let rx = fields[3].parse::<f64>()
+        let rx = fields[3]
+            .parse::<f64>()
             .map_err(|_| EasyedaError::InvalidData("Invalid ellipse RX".to_string()))?;
-        let ry = fields[4].parse::<f64>()
+        let ry = fields[4]
+            .parse::<f64>()
             .map_err(|_| EasyedaError::InvalidData("Invalid ellipse RY".to_string()))?;
 
         // fill_color is at index 8, check if it's not empty and not "none"
         let fill = fields.len() > 8 && !fields[8].is_empty() && fields[8] != "none";
 
-        log::debug!("Ellipse fill_color field[8] = '{}', fill = {}",
-            if fields.len() > 8 { fields[8] } else { "N/A" }, fill);
+        log::debug!(
+            "Ellipse fill_color field[8] = '{}', fill = {}",
+            if fields.len() > 8 { fields[8] } else { "N/A" },
+            fill
+        );
 
         Ok(EeEllipse {
             cx,
@@ -356,15 +428,20 @@ impl SymbolImporter {
             return Err(EasyedaError::InvalidData("Invalid arc data".to_string()).into());
         }
 
-        let x = fields[1].parse::<f64>()
+        let x = fields[1]
+            .parse::<f64>()
             .map_err(|_| EasyedaError::InvalidData("Invalid arc X".to_string()))?;
-        let y = fields[2].parse::<f64>()
+        let y = fields[2]
+            .parse::<f64>()
             .map_err(|_| EasyedaError::InvalidData("Invalid arc Y".to_string()))?;
-        let radius = fields[3].parse::<f64>()
+        let radius = fields[3]
+            .parse::<f64>()
             .map_err(|_| EasyedaError::InvalidData("Invalid arc radius".to_string()))?;
-        let start_angle = fields[4].parse::<f64>()
+        let start_angle = fields[4]
+            .parse::<f64>()
             .map_err(|_| EasyedaError::InvalidData("Invalid arc start angle".to_string()))?;
-        let end_angle = fields[5].parse::<f64>()
+        let end_angle = fields[5]
+            .parse::<f64>()
             .map_err(|_| EasyedaError::InvalidData("Invalid arc end angle".to_string()))?;
 
         Ok(EeArc {
@@ -378,9 +455,9 @@ impl SymbolImporter {
     }
 
     fn parse_svg_arc(fields: &[&str]) -> Result<Vec<EeArc>> {
-        use crate::easyeda::svg_parser::{parse_svg_path, SvgCommand};
-        use crate::converter::Converter;
         use crate::cli::KicadVersion;
+        use crate::converter::Converter;
+        use crate::easyeda::svg_parser::{SvgCommand, parse_svg_path};
 
         if fields.len() < 2 {
             return Err(EasyedaError::InvalidData("Invalid SVG arc data".to_string()).into());
@@ -398,7 +475,15 @@ impl SymbolImporter {
                 SvgCommand::MoveTo { x, y } => {
                     current_pos = (x, y);
                 }
-                SvgCommand::Arc { rx, ry, angle, large_arc, sweep, x, y } => {
+                SvgCommand::Arc {
+                    rx,
+                    ry,
+                    angle,
+                    large_arc,
+                    sweep,
+                    x,
+                    y,
+                } => {
                     if let Ok((cx, cy, start_angle, end_angle)) = conv.compute_arc_center(
                         current_pos,
                         (x, y),
@@ -477,7 +562,7 @@ impl SymbolImporter {
     }
 
     fn parse_pt_path(fields: &[&str]) -> Result<EePolygon> {
-        use crate::easyeda::svg_parser::{parse_svg_path, SvgCommand};
+        use crate::easyeda::svg_parser::{SvgCommand, parse_svg_path};
 
         if fields.len() < 2 {
             return Err(EasyedaError::InvalidData("Invalid path data".to_string()).into());
@@ -536,9 +621,11 @@ impl SymbolImporter {
             return Err(EasyedaError::InvalidData("Invalid text data".to_string()).into());
         }
 
-        let x = fields[2].parse::<f64>()
+        let x = fields[2]
+            .parse::<f64>()
             .map_err(|_| EasyedaError::InvalidData("Invalid text X".to_string()))?;
-        let y = fields[3].parse::<f64>()
+        let y = fields[3]
+            .parse::<f64>()
             .map_err(|_| EasyedaError::InvalidData("Invalid text Y".to_string()))?;
         let rotation = fields[4].parse::<i32>().unwrap_or(0);
         let text = fields[12].to_string();
@@ -585,9 +672,11 @@ impl SymbolImporter {
 
         for i in (0..coords.len()).step_by(2) {
             if i + 1 < coords.len() {
-                let x = coords[i].parse::<f64>()
+                let x = coords[i]
+                    .parse::<f64>()
                     .map_err(|_| EasyedaError::InvalidData("Invalid point X".to_string()))?;
-                let y = coords[i + 1].parse::<f64>()
+                let y = coords[i + 1]
+                    .parse::<f64>()
                     .map_err(|_| EasyedaError::InvalidData("Invalid point Y".to_string()))?;
                 points.push((x, y));
             }
@@ -684,15 +773,20 @@ impl FootprintImporter {
         // Actual field mapping based on real data:
         // [0]=PAD, [1]=shape, [2]=x, [3]=y, [4]=width, [5]=height, [6]=layer_id, [7]=net, [8]=number, [9]=hole_radius, [10]=points, [11]=rotation
         let shape = fields[1].to_string();
-        let x = fields[2].parse::<f64>()
+        let x = fields[2]
+            .parse::<f64>()
             .map_err(|_| EasyedaError::InvalidData("Invalid pad X".to_string()))?;
-        let y = fields[3].parse::<f64>()
+        let y = fields[3]
+            .parse::<f64>()
             .map_err(|_| EasyedaError::InvalidData("Invalid pad Y".to_string()))?;
-        let width = fields[4].parse::<f64>()
+        let width = fields[4]
+            .parse::<f64>()
             .map_err(|_| EasyedaError::InvalidData("Invalid pad width".to_string()))?;
-        let height = fields[5].parse::<f64>()
+        let height = fields[5]
+            .parse::<f64>()
             .map_err(|_| EasyedaError::InvalidData("Invalid pad height".to_string()))?;
-        let layer_id = fields[6].parse::<i32>()
+        let layer_id = fields[6]
+            .parse::<i32>()
             .map_err(|_| EasyedaError::InvalidData("Invalid pad layer_id".to_string()))?;
 
         // Field 8 is the pad number
@@ -753,9 +847,11 @@ impl FootprintImporter {
         }
 
         // TRACK~stroke_width~layer_id~net~points~id~locked
-        let stroke_width = fields[1].parse::<f64>()
+        let stroke_width = fields[1]
+            .parse::<f64>()
             .map_err(|_| EasyedaError::InvalidData("Invalid track width".to_string()))?;
-        let layer_id = fields[2].parse::<i32>()
+        let layer_id = fields[2]
+            .parse::<i32>()
             .map_err(|_| EasyedaError::InvalidData("Invalid track layer_id".to_string()))?;
         let net = fields[3].to_string();
         let points = fields[4].to_string();
@@ -774,11 +870,14 @@ impl FootprintImporter {
         }
 
         // CIRCLE~cx~cy~radius~stroke_width~layer_id~id~is_locked
-        let cx = fields[1].parse::<f64>()
+        let cx = fields[1]
+            .parse::<f64>()
             .map_err(|_| EasyedaError::InvalidData("Invalid circle CX".to_string()))?;
-        let cy = fields[2].parse::<f64>()
+        let cy = fields[2]
+            .parse::<f64>()
             .map_err(|_| EasyedaError::InvalidData("Invalid circle CY".to_string()))?;
-        let radius = fields[3].parse::<f64>()
+        let radius = fields[3]
+            .parse::<f64>()
             .map_err(|_| EasyedaError::InvalidData("Invalid circle radius".to_string()))?;
         let stroke_width = if fields.len() > 4 {
             fields[4].parse::<f64>().unwrap_or(1.0)
@@ -824,13 +923,17 @@ impl FootprintImporter {
         }
 
         // RECT~x~y~width~height~stroke_width~id~layer_id~is_locked
-        let x = fields[1].parse::<f64>()
+        let x = fields[1]
+            .parse::<f64>()
             .map_err(|_| EasyedaError::InvalidData("Invalid rectangle X".to_string()))?;
-        let y = fields[2].parse::<f64>()
+        let y = fields[2]
+            .parse::<f64>()
             .map_err(|_| EasyedaError::InvalidData("Invalid rectangle Y".to_string()))?;
-        let width = fields[3].parse::<f64>()
+        let width = fields[3]
+            .parse::<f64>()
             .map_err(|_| EasyedaError::InvalidData("Invalid rectangle width".to_string()))?;
-        let height = fields[4].parse::<f64>()
+        let height = fields[4]
+            .parse::<f64>()
             .map_err(|_| EasyedaError::InvalidData("Invalid rectangle height".to_string()))?;
         let stroke_width = if fields.len() > 5 {
             fields[5].parse::<f64>().unwrap_or(1.0)
@@ -860,9 +963,11 @@ impl FootprintImporter {
         }
 
         // TEXT~type~center_x~center_y~stroke_width~rotation~mirror~layer_id~net~font_size~text~...
-        let x = fields[2].parse::<f64>()
+        let x = fields[2]
+            .parse::<f64>()
             .map_err(|_| EasyedaError::InvalidData("Invalid text X".to_string()))?;
-        let y = fields[3].parse::<f64>()
+        let y = fields[3]
+            .parse::<f64>()
             .map_err(|_| EasyedaError::InvalidData("Invalid text Y".to_string()))?;
         let stroke_width = fields[4].parse::<f64>().unwrap_or(0.0);
         let rotation = fields[5].parse::<i32>().unwrap_or(0);
@@ -886,18 +991,17 @@ impl FootprintImporter {
             return Err(EasyedaError::InvalidData("Invalid hole data".to_string()).into());
         }
 
-        let x = fields[1].parse::<f64>()
+        let x = fields[1]
+            .parse::<f64>()
             .map_err(|_| EasyedaError::InvalidData("Invalid hole X".to_string()))?;
-        let y = fields[2].parse::<f64>()
+        let y = fields[2]
+            .parse::<f64>()
             .map_err(|_| EasyedaError::InvalidData("Invalid hole Y".to_string()))?;
-        let radius = fields[3].parse::<f64>()
+        let radius = fields[3]
+            .parse::<f64>()
             .map_err(|_| EasyedaError::InvalidData("Invalid hole radius".to_string()))?;
 
-        Ok(EeHole {
-            x,
-            y,
-            radius,
-        })
+        Ok(EeHole { x, y, radius })
     }
 
     fn parse_via(fields: &[&str]) -> Result<EeVia> {
@@ -906,14 +1010,18 @@ impl FootprintImporter {
         }
 
         // VIA~x~y~diameter~net~radius~id~locked
-        let x = fields[1].parse::<f64>()
+        let x = fields[1]
+            .parse::<f64>()
             .map_err(|_| EasyedaError::InvalidData("Invalid via X".to_string()))?;
-        let y = fields[2].parse::<f64>()
+        let y = fields[2]
+            .parse::<f64>()
             .map_err(|_| EasyedaError::InvalidData("Invalid via Y".to_string()))?;
-        let diameter = fields[3].parse::<f64>()
+        let diameter = fields[3]
+            .parse::<f64>()
             .map_err(|_| EasyedaError::InvalidData("Invalid via diameter".to_string()))?;
         let net = fields[4].to_string();
-        let radius = fields[5].parse::<f64>()
+        let radius = fields[5]
+            .parse::<f64>()
             .map_err(|_| EasyedaError::InvalidData("Invalid via radius".to_string()))?;
 
         Ok(EeVia {

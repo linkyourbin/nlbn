@@ -3,8 +3,14 @@ use regex::Regex;
 
 #[derive(Debug, Clone)]
 pub enum SvgCommand {
-    MoveTo { x: f64, y: f64 },
-    LineTo { x: f64, y: f64 },
+    MoveTo {
+        x: f64,
+        y: f64,
+    },
+    LineTo {
+        x: f64,
+        y: f64,
+    },
     Arc {
         rx: f64,
         ry: f64,
@@ -36,10 +42,12 @@ pub fn parse_svg_path(path: &str) -> Result<Vec<SvgCommand>> {
 
         if remaining.starts_with('M') {
             if let Some(cap) = move_re.captures(remaining) {
-                let x = cap[1].parse::<f64>()
-                    .map_err(|_| ConversionError::SvgParse("Invalid MoveTo X coordinate".to_string()))?;
-                let y = cap[2].parse::<f64>()
-                    .map_err(|_| ConversionError::SvgParse("Invalid MoveTo Y coordinate".to_string()))?;
+                let x = cap[1].parse::<f64>().map_err(|_| {
+                    ConversionError::SvgParse("Invalid MoveTo X coordinate".to_string())
+                })?;
+                let y = cap[2].parse::<f64>().map_err(|_| {
+                    ConversionError::SvgParse("Invalid MoveTo Y coordinate".to_string())
+                })?;
                 commands.push(SvgCommand::MoveTo { x, y });
                 pos += cap.get(0).unwrap().len();
             } else {
@@ -47,10 +55,12 @@ pub fn parse_svg_path(path: &str) -> Result<Vec<SvgCommand>> {
             }
         } else if remaining.starts_with('L') {
             if let Some(cap) = line_re.captures(remaining) {
-                let x = cap[1].parse::<f64>()
-                    .map_err(|_| ConversionError::SvgParse("Invalid LineTo X coordinate".to_string()))?;
-                let y = cap[2].parse::<f64>()
-                    .map_err(|_| ConversionError::SvgParse("Invalid LineTo Y coordinate".to_string()))?;
+                let x = cap[1].parse::<f64>().map_err(|_| {
+                    ConversionError::SvgParse("Invalid LineTo X coordinate".to_string())
+                })?;
+                let y = cap[2].parse::<f64>().map_err(|_| {
+                    ConversionError::SvgParse("Invalid LineTo Y coordinate".to_string())
+                })?;
                 commands.push(SvgCommand::LineTo { x, y });
                 pos += cap.get(0).unwrap().len();
             } else {
@@ -58,18 +68,23 @@ pub fn parse_svg_path(path: &str) -> Result<Vec<SvgCommand>> {
             }
         } else if remaining.starts_with('A') {
             if let Some(cap) = arc_re.captures(remaining) {
-                let rx = cap[1].parse::<f64>()
+                let rx = cap[1]
+                    .parse::<f64>()
                     .map_err(|_| ConversionError::SvgParse("Invalid Arc RX".to_string()))?;
-                let ry = cap[2].parse::<f64>()
+                let ry = cap[2]
+                    .parse::<f64>()
                     .map_err(|_| ConversionError::SvgParse("Invalid Arc RY".to_string()))?;
-                let angle = cap[3].parse::<f64>()
+                let angle = cap[3]
+                    .parse::<f64>()
                     .map_err(|_| ConversionError::SvgParse("Invalid Arc angle".to_string()))?;
                 let large_arc = &cap[4] == "1";
                 let sweep = &cap[5] == "1";
-                let x = cap[6].parse::<f64>()
-                    .map_err(|_| ConversionError::SvgParse("Invalid Arc X coordinate".to_string()))?;
-                let y = cap[7].parse::<f64>()
-                    .map_err(|_| ConversionError::SvgParse("Invalid Arc Y coordinate".to_string()))?;
+                let x = cap[6].parse::<f64>().map_err(|_| {
+                    ConversionError::SvgParse("Invalid Arc X coordinate".to_string())
+                })?;
+                let y = cap[7].parse::<f64>().map_err(|_| {
+                    ConversionError::SvgParse("Invalid Arc Y coordinate".to_string())
+                })?;
                 commands.push(SvgCommand::Arc {
                     rx,
                     ry,

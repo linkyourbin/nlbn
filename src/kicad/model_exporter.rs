@@ -34,10 +34,13 @@ impl ModelExporter {
 
             // First line is the material name
             let material_name = lines[0].trim();
-            let material = materials.get(material_name).cloned().unwrap_or_else(|| Material {
-                diffuse: (0.8, 0.8, 0.8),
-                specular: (0.5, 0.5, 0.5),
-            });
+            let material = materials
+                .get(material_name)
+                .cloned()
+                .unwrap_or_else(|| Material {
+                    diffuse: (0.8, 0.8, 0.8),
+                    specular: (0.5, 0.5, 0.5),
+                });
 
             // Process faces for this material
             let mut index_counter = 0;
@@ -92,10 +95,14 @@ impl ModelExporter {
             output.push_str("\nShape {\n");
             output.push_str("  appearance Appearance {\n");
             output.push_str("    material Material {\n");
-            output.push_str(&format!("      diffuseColor {} {} {}\n",
-                material.diffuse.0, material.diffuse.1, material.diffuse.2));
-            output.push_str(&format!("      specularColor {} {} {}\n",
-                material.specular.0, material.specular.1, material.specular.2));
+            output.push_str(&format!(
+                "      diffuseColor {} {} {}\n",
+                material.diffuse.0, material.diffuse.1, material.diffuse.2
+            ));
+            output.push_str(&format!(
+                "      specularColor {} {} {}\n",
+                material.specular.0, material.specular.1, material.specular.2
+            ));
             output.push_str("      ambientIntensity 0.2\n");
             output.push_str("      transparency 0\n");
             output.push_str("      shininess 0.5\n");
@@ -158,12 +165,15 @@ impl ModelExporter {
             if line.starts_with("v ") {
                 let parts: Vec<&str> = line.split_whitespace().collect();
                 if parts.len() >= 4 {
-                    let x = parts[1].parse::<f64>()
-                        .map_err(|_| KicadError::ModelExport("Invalid vertex X coordinate".to_string()))?;
-                    let y = parts[2].parse::<f64>()
-                        .map_err(|_| KicadError::ModelExport("Invalid vertex Y coordinate".to_string()))?;
-                    let z = parts[3].parse::<f64>()
-                        .map_err(|_| KicadError::ModelExport("Invalid vertex Z coordinate".to_string()))?;
+                    let x = parts[1].parse::<f64>().map_err(|_| {
+                        KicadError::ModelExport("Invalid vertex X coordinate".to_string())
+                    })?;
+                    let y = parts[2].parse::<f64>().map_err(|_| {
+                        KicadError::ModelExport("Invalid vertex Y coordinate".to_string())
+                    })?;
+                    let z = parts[3].parse::<f64>().map_err(|_| {
+                        KicadError::ModelExport("Invalid vertex Z coordinate".to_string())
+                    })?;
 
                     // Convert from mm to inches by dividing by 2.54, round to 4 decimals
                     let vx = format!("{:.4}", x / 2.54);
@@ -199,7 +209,7 @@ impl ModelExporter {
                         Material {
                             diffuse: (0.8, 0.8, 0.8),
                             specular: (0.5, 0.5, 0.5),
-                        }
+                        },
                     ));
                 }
             } else if let Some((_, ref mut mat)) = current_material {
@@ -210,7 +220,7 @@ impl ModelExporter {
                         if let (Ok(r), Ok(g), Ok(b)) = (
                             parts[1].parse::<f64>(),
                             parts[2].parse::<f64>(),
-                            parts[3].parse::<f64>()
+                            parts[3].parse::<f64>(),
                         ) {
                             mat.diffuse = (r, g, b);
                         }
@@ -222,7 +232,7 @@ impl ModelExporter {
                         if let (Ok(r), Ok(g), Ok(b)) = (
                             parts[1].parse::<f64>(),
                             parts[2].parse::<f64>(),
-                            parts[3].parse::<f64>()
+                            parts[3].parse::<f64>(),
                         ) {
                             mat.specular = (r, g, b);
                         }
